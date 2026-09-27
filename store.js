@@ -109,6 +109,17 @@
     put: (kind, data) => put(kind, data, false),
     remove: (kind, data) => put(kind, data, true),
     syncNow: () => sync(),
+    // Llama a la Edge Function bt-picks con el código de acceso.
+    callPicks: async body => {
+      const res = await fetch(API.replace('/rest/v1/rpc/', '/functions/v1/bt-picks'), {
+        method: 'POST',
+        headers: { apikey: KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ secret: db.secret }, body))
+      });
+      let data; try { data = await res.json(); } catch (e) { data = { error: 'HTTP ' + res.status }; }
+      if (data && data.error === 'bad_secret') { status = 'bad_secret'; emit(); }
+      return data;
+    },
     // Estado del servidor: 'new' (sin código) o 'configured'.
     serverStatus: () => rpc('bt_status'),
     // Crea (create=true) o comprueba el código. Devuelve created|ok|bad|too_short|not_configured.

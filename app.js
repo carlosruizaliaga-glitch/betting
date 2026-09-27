@@ -4,7 +4,7 @@
 
   const DEFAULT_SETTINGS = {
     id: 'settings', books: ['bet365'], sports: ['⚽'], types: ['1X2', 'Combinada'], tipsters: ['Carlos'], leagues: [],
-    unit: 1, lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power'
+    unit: 1, lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: []
   };
 
   // ---------- Acceso a datos ----------
@@ -328,8 +328,10 @@
       tipster: st.tipsters[0] || '', league: (prefill && prefill.league) || '', level: null, stake: null, odds: null,
       result: 'P', cashout: null, live: false, bonus: false,
       legs: [{ event: (prefill && prefill.event) || '', sel: (prefill && prefill.sel) || '', odds: null }],
-      notes: '', pickId: (prefill && prefill.pickId) || null, fair: (prefill && prefill.fair) || null
+      notes: '', pickId: (prefill && prefill.pickId) || null, fair: (prefill && prefill.fair) || null,
+      pickOutcome: (prefill && prefill.outcome) || null, commence: (prefill && prefill.commence) || null
     };
+    if (prefill && prefill.sport) b.sport = prefill.sport;
     if (!b.legs || !b.legs.length) b.legs = [{ event: '', sel: '', odds: b.odds }];
     const avail = L.funds(all, moves(), b.id).total.available;
     const chips = (k, list) => {
@@ -353,7 +355,7 @@
       <label>TIPO</label>${chips('type', st.types)}
       <label>TIPSTER</label>${chips('tipster', st.tipsters)}
       <label>LIGA</label><input id="league" list="leaguesDl" value="${esc(b.league)}" placeholder="Opcional" autocomplete="off">
-      <datalist id="leaguesDl">${Array.from(new Set(st.leagues.concat(all.map(x => x.league).filter(Boolean)))).map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+      <datalist id="leaguesDl">${Array.from(new Set(st.leagues.concat((st.scan || []).map(l => l.name), all.map(x => x.league).filter(Boolean)))).map(v => `<option value="${esc(v)}">`).join('')}</datalist>
       <div class="row" style="margin-top:12px;gap:18px">
         <label class="row" style="margin:0;gap:6px"><input type="checkbox" id="live" ${b.live ? 'checked' : ''}> EN DIRECTO</label>
         <label class="row" style="margin:0;gap:6px"><input type="checkbox" id="bonus" ${b.bonus ? 'checked' : ''}> APUESTA GRATIS</label></div>
@@ -449,10 +451,112 @@
     else if (isNew) setTimeout(() => { const i = m.querySelector('[data-odds="0"]'); if (i) i.focus(); }, 50);
   }
 
-  // ---------- PICKS (FASE 2) ----------
+  // ---------- PICKS ----------
+  // Los últimos picks se guardan en el móvil para verlos sin conexión.
+  const PK = 'betting.picks.v1';
+  let pickCache = { picks: [], credits: null, at: null, lastScan: null };
+  try { Object.assign(pickCache, JSON.parse(localStorage.getItem(PK) || '{}')); } catch (e) { console.error(e); }
+  const savePicks = patch => { Object.assign(pickCache, patch); try { localStorage.setItem(PK, JSON.stringify(pickCache)); } catch (e) { console.error(e); } };
+  let picksMode = null, picksBusy = false, picksMsg = '', picksLoadedAt = 0;
+  const OUT_NAME = (p, o) => o === '1' ? p.home : o === '2' ? p.away : 'Empate';
+
+  const ERRORS = {
+    missing_odds_key: 'Falta el secreto ODDS_API_KEY en Supabase.',
+    bad_odds_key: 'La clave de The Odds API no es válida. Revisa ODDS_API_KEY.',
+    no_credits: 'No quedan créditos suficientes en The Odds API este mes.',
+    missing_telegram: 'Picks guardados, pero falta configurar Telegram (TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID).',
+    bad_secret: 'Código de acceso no válido.',
+    too_many_attempts: 'Demasiados intentos. Espera 10 minutos.'
+  };
+  const errText = e => ERRORS[e] || ('Error: ' + e);
+
+  function creditsHtml(c) {
+    if (!c || c.remaining == null) return '<span class="muted">CRÉDITOS —</span>';
+    const quota = (c.used || 0) + c.remaining, share = quota ? c.remaining / quota : 1;
+    return `CRÉDITOS <b class="${share < 0.1 ? 'neg' : share < 0.25 ? 'yellow' : 'pos'}">${c.remaining}</b><span class="muted"> / ${quota}</span>`;
+  }
+
+  async function refreshPicks() {
+    try {
+      const r = await S.callPicks({ action: 'picks' });
+      if (r && r.ok) { savePicks({ picks: r.picks, credits: r.credits || pickCache.credits, at: Date.now() }); picksLoadedAt = Date.now(); if (tab === 'picks') render(); }
+    } catch (e) { /* sin conexión: se ven los guardados */ }
+  }
+
+  async function runScan(send, confirmLow) {
+    if (picksBusy) return;
+    picksBusy = true; picksMsg = send ? 'BUSCANDO PARTIDOS Y ENVIANDO…' : 'BUSCANDO PARTIDOS…'; render();
+    try {
+      const r = await S.callPicks({ action: 'scan', mode: picksMode, send, confirmLow: !!confirmLow });
+      picksBusy = false;
+      if (r.needConfirm) {
+        const left = r.credits.remaining - r.cost;
+        picksMsg = ''; render();
+        if (await ask(`Esta pulsación gasta ${r.cost} crédito(s) y te dejará con ${left} de ${r.quota} (menos del 10 %).\n¿Seguir?`, { ok: 'GASTAR' })) return runScan(send, true);
+        return;
+      }
+      if (r.error) { picksMsg = '⛔ ' + errText(r.error); if (r.credits) savePicks({ credits: r.credits }); render(); return; }
+      savePicks({ picks: r.picks, credits: r.credits || pickCache.credits, at: Date.now(), lastScan: { at: new Date().toISOString(), cost: r.cost, sent: r.sent, mode: r.mode } });
+      picksLoadedAt = Date.now();
+      const withEv = r.leagues.filter(l => l.events > 0).length;
+      const off = r.leagues.filter(l => l.error).map(l => l.name);
+      picksMsg = `${r.leagues.length} LIGAS · ${withEv} CON PARTIDOS · GASTO ${r.cost} CRÉDITO${r.cost === 1 ? '' : 'S'}` +
+        (send ? (r.tgError ? ` · ⛔ ${errText(r.tgError)}` : ` · ✓ ENVIADO A TELEGRAM (${r.sent} MENSAJE${r.sent === 1 ? '' : 'S'})`) : '') +
+        (off.length ? ` · SIN DATOS: ${off.join(', ')}` : '');
+      render();
+    } catch (e) {
+      picksBusy = false; picksMsg = '⛔ Sin conexión. Inténtalo de nuevo.'; render();
+    }
+  }
+
   function renderPicks() {
-    view.innerHTML = `<h2>PICKS 1X2 · PINNACLE</h2>
-      <div class="card empty">LLEGA EN LA FASE 2<br><br>AQUÍ VERÁS LOS PARTIDOS CON PROBABILIDADES JUSTAS, EL BOTÓN <span class="pos">PICKS → TELEGRAM</span> Y LOS CRÉDITOS QUE QUEDAN.</div>`;
+    const st = settings();
+    if (!picksMode) picksMode = st.sendMode;
+    if (!picksBusy && Date.now() - picksLoadedAt > 60000 && navigator.onLine) { picksLoadedAt = Date.now(); refreshPicks(); }
+    const now = Date.now();
+    const all = (pickCache.picks || []).filter(p => new Date(p.commence_time).getTime() > now - 2 * 3600e3);
+    const list = all.filter(p => picksMode === 'all' || p.value_outcome)
+      .sort((a, b) => a.commence_time.localeCompare(b.commence_time) || a.league.localeCompare(b.league));
+    const ls = pickCache.lastScan;
+    let html = `<div class="card">
+      <div class="num">${creditsHtml(pickCache.credits)}</div>
+      ${ls ? `<div class="muted">ÚLTIMA BÚSQUEDA ${fdate(L.madridDate(new Date(ls.at)))} ${new Date(ls.at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+      <div class="seg" style="margin-top:10px"><button data-pm="value" class="${picksMode === 'value' ? 'on' : ''}">SOLO ⭐ VALOR</button><button data-pm="all" class="${picksMode === 'all' ? 'on' : ''}">TODOS</button></div>
+      <button class="primary block" id="scanSend" style="margin-top:8px;padding:15px" ${picksBusy ? 'disabled' : ''}>${picksBusy ? '…' : '⚡ PICKS 1X2 → TELEGRAM'}</button>
+      <button class="small block" id="scanOnly" style="margin-top:6px" ${picksBusy ? 'disabled' : ''}>BUSCAR SIN ENVIAR</button>
+      ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
+      <div class="muted" style="margin-top:8px">CADA LIGA CON PARTIDOS GASTA 1 CRÉDITO. LAS PEDIDAS HACE MENOS DE 30 MIN SON GRATIS. VALOR ≥ +${fnum(st.threshold, st.threshold % 1 ? 1 : 0)} % SOBRE LA CUOTA JUSTA.</div>
+    </div>`;
+    if (!list.length) html += `<div class="card empty">${all.length ? 'NINGÚN PARTIDO CON ⭐ VALOR AHORA. TOCA "TODOS" PARA VERLOS.' : 'AÚN NO HAY PICKS. PULSA EL BOTÓN.'}</div>`;
+    let hdr = null;
+    list.forEach(p => {
+      const d = p.commence_time, day = L.madridDate(new Date(d)), h = `${esc(p.league.toUpperCase())} · ${fdateShort(day)}`;
+      if (h !== hdr) { html += `<div class="datehdr">⚽ ${h}</div>`; hdr = h; }
+      const time = new Date(d).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' });
+      const started = new Date(d).getTime() <= now;
+      html += `<div class="card" style="margin-top:4px;padding:10px">
+        <div class="row"><b class="grow ellipsis">${time} ${esc(p.home)} – ${esc(p.away)}</b>${p.value_outcome ? '<span class="yellow">⭐</span>' : ''}${started ? '<span class="tag">EN JUEGO</span>' : ''}</div>
+        <div class="pickrow">${['1', 'X', '2'].map(o => {
+          const b = p.best && p.best[o], isVal = p.value_outcome === o, isFav = p.favorite === o;
+          return `<button class="pk${isFav ? ' fav' : ''}${isVal ? ' val' : ''}" data-pick="${esc(p.id)}" data-o="${o}">
+            <span class="o">${o}${isVal ? ' ⭐' : isFav ? ' ➜' : ''}</span>
+            <b>${fnum(p.fair_prob[o] * 100, 0)} %</b>
+            <span>JUSTA ${odds(p.fair_odds[o])}</span>
+            <span class="muted">${b ? esc(b.book) : '—'}</span>
+            <span class="${b && b.edge > 0 ? 'pos' : 'muted'}">${b ? `${odds(b.odds)} (${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)` : ''}</span>
+          </button>`;
+        }).join('')}</div></div>`;
+    });
+    html += `<div class="muted" style="margin:10px 0">TOCA 1, X O 2 PARA APUNTAR LA APUESTA CON EL PARTIDO Y LA CUOTA JUSTA YA PUESTOS. BET365 NO ESTÁ EN LA API: COMPARA TÚ SU CUOTA CON LA JUSTA.</div>`;
+    view.innerHTML = html;
+    view.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { picksMode = b.dataset.pm; render(); });
+    view.querySelector('#scanSend').onclick = () => runScan(true);
+    view.querySelector('#scanOnly').onclick = () => runScan(false);
+    view.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
+      const p = (pickCache.picks || []).find(x => x.id === b.dataset.pick), o = b.dataset.o;
+      if (!p) return;
+      openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o), league: p.league, fair: L.r2(p.fair_odds[o]), pickId: p.id, outcome: o, commence: p.commence_time, sport: '⚽' });
+    });
   }
 
   // ---------- ESTADÍSTICAS ----------
@@ -578,6 +682,21 @@
       <div class="card"><div class="row"><div class="grow"><label style="margin-top:0">SEMANAL €</label><input id="lw" inputmode="decimal" value="${st.lossWeek ? fnum(st.lossWeek) : ''}" placeholder="Sin límite"></div>
         <div class="grow"><label style="margin-top:0">MENSUAL €</label><input id="lm" inputmode="decimal" value="${st.lossMonth ? fnum(st.lossMonth) : ''}" placeholder="Sin límite"></div></div>
         <div class="muted" style="margin-top:6px">SI LO SUPERAS, INICIO MUESTRA UN AVISO EN ROJO. SEMANA = LUNES A DOMINGO.</div></div>
+      <h2>ESCÁNER DE PICKS</h2>
+      <div class="card"><label style="margin-top:0">LIGAS (TOCA PARA ACTIVAR / DESACTIVAR)</label>
+        <div class="chips">${(st.scan || []).map((l, i) => `<button data-scan="${i}" class="${l.on ? 'on' : ''}">${esc(l.name)}</button>`).join('')}</div>
+        <details style="margin-top:8px"><summary class="muted">AÑADIR O QUITAR UNA LIGA</summary>
+          <div class="row" style="margin-top:6px"><input id="scName" placeholder="Nombre" style="flex:1"><input id="scKey" placeholder="soccer_…" style="flex:1.4"></div>
+          <div class="row" style="margin-top:6px"><button class="small" id="scAdd">AÑADIR</button><select id="scDel" style="flex:1"><option value="">Quitar…</option>${(st.scan || []).map((l, i) => `<option value="${i}">${esc(l.name)} · ${esc(l.key)}</option>`).join('')}</select></div>
+        </details>
+        <div class="row" style="margin-top:12px"><div class="grow"><label style="margin-top:0">UMBRAL DE VALOR %</label><input id="thr" inputmode="decimal" value="${fnum(st.threshold, st.threshold % 1 ? 1 : 0)}"></div>
+          <div class="grow"><label style="margin-top:0">ENVÍO POR DEFECTO</label><div class="seg"><button data-sm="value" class="${st.sendMode === 'value' ? 'on' : ''}">SOLO ⭐</button><button data-sm="all" class="${st.sendMode === 'all' ? 'on' : ''}">TODOS</button></div></div></div>
+        <label>QUITAR EL MARGEN DE PINNACLE</label>
+        <div class="seg"><button data-dv="power" class="${st.devig !== 'mult' ? 'on' : ''}">POWER</button><button data-dv="mult" class="${st.devig === 'mult' ? 'on' : ''}">PROPORCIONAL</button></div>
+        <div class="muted" style="margin-top:6px">PROPORCIONAL REPARTE EL MARGEN A PARTES IGUALES; POWER CARGA MÁS MARGEN A LOS NO FAVORITOS, QUE ES DONDE LAS CASAS LO PONEN DE VERDAD.</div></div>
+      <h2>CONEXIÓN · THE ODDS API Y TELEGRAM</h2>
+      <div class="card"><div id="conn" class="muted">PULSA COMPROBAR PARA VER EL ESTADO.</div>
+        <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button></div></div>
       <h2>LISTAS</h2>
       ${Object.keys(LISTS).map(k => `<div class="card listedit"><label style="margin-top:0">${LISTS[k]}</label>
         <div class="chips">${(st[k] || []).map((v, i) => `<button data-list="${k}" data-i="${i}">${esc(v)}<i>×</i></button>`).join('') || '<span class="muted">VACÍA</span>'}</div>
@@ -592,7 +711,7 @@
       <h2>SESIÓN</h2>
       <div class="card"><div class="muted">ESTADO: ${st2 === 'ok' ? '<span class="pos">SINCRONIZADO</span>' : esc(String(st2).toUpperCase())}${S.lastSync() ? ' · ÚLTIMA ' + new Date(S.lastSync()).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' }) : ''}</div>
         <button class="danger block" id="logout" style="margin-top:10px">CERRAR SESIÓN EN ESTE MÓVIL</button></div>
-      <div class="muted" style="text-align:center;margin-top:18px">BETTING · FASE 1</div>`;
+      <div class="muted" style="text-align:center;margin-top:18px">BETTING · FASE 2</div>`;
     const num = (id, key, min) => view.querySelector(id).onchange = ev => {
       const v = pnum(ev.target.value);
       if (ev.target.value.trim() === '' && key !== 'unit') { saveSettings({ [key]: null }); return; }
@@ -616,6 +735,24 @@
       b.onclick = add;
       input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
     });
+    view.querySelectorAll('[data-scan]').forEach(b => b.onclick = () => {
+      const scan = settings().scan.map(x => Object.assign({}, x)); const l = scan[+b.dataset.scan]; l.on = !l.on; saveSettings({ scan });
+    });
+    view.querySelector('#scAdd').onclick = () => {
+      const name = view.querySelector('#scName').value.trim(), key = view.querySelector('#scKey').value.trim();
+      if (!name || !/^[a-z0-9_]+$/.test(key)) { toast('Pon nombre y clave (ej. soccer_spain_la_liga)'); return; }
+      saveSettings({ scan: settings().scan.concat([{ name, key, on: true }]) });
+    };
+    view.querySelector('#scDel').onchange = async ev => {
+      const i = ev.target.value; if (i === '') return;
+      const scan = settings().scan.slice(), l = scan[+i];
+      if (await confirmDelete(`¿Quitar ${l.name} del escáner?`)) { scan.splice(+i, 1); saveSettings({ scan }); } else render();
+    };
+    view.querySelector('#thr').onchange = ev => { const v = pnum(ev.target.value); if (!(v >= 0)) { toast('Número no válido'); render(); return; } saveSettings({ threshold: v }); toast('GUARDADO'); };
+    view.querySelectorAll('[data-sm]').forEach(b => b.onclick = () => { saveSettings({ sendMode: b.dataset.sm }); picksMode = b.dataset.sm; });
+    view.querySelectorAll('[data-dv]').forEach(b => b.onclick = () => saveSettings({ devig: b.dataset.dv }));
+    view.querySelector('#chk').onclick = checkConnection;
+    view.querySelector('#chat').onclick = detectChat;
     view.querySelector('#toCash').onclick = () => go('cash');
     view.querySelector('#csvBets').onclick = exportBetsCsv;
     view.querySelector('#csvMoves').onclick = exportMovesCsv;
@@ -627,6 +764,35 @@
       if (!await ask(p ? `Hay ${p} cambio(s) sin subir que se perderán. ¿Cerrar sesión?` : '¿Cerrar sesión en este móvil? Los datos siguen en la nube.', { ok: 'CERRAR SESIÓN', danger: true })) return;
       S.logout(); render();
     };
+  }
+
+  async function checkConnection() {
+    const box = view.querySelector('#conn'); box.textContent = 'COMPROBANDO…';
+    try {
+      const r = await S.callPicks({ action: 'status' });
+      if (r.error) { box.innerHTML = `<span class="neg">⛔ ${esc(errText(r.error))}</span>`; return; }
+      const ok = v => v ? '<span class="pos">✓</span>' : '<span class="neg">✗ FALTA</span>';
+      if (r.credits) savePicks({ credits: r.credits });
+      const missing = r.sports ? settings().scan.filter(l => l.on && !r.sports.includes(l.key)).map(l => l.name) : [];
+      box.innerHTML = `<div class="kv"><span>ODDS_API_KEY</span><span>${ok(r.secrets.odds)}${r.oddsError ? ' <span class="neg">' + esc(r.oddsError) + '</span>' : ''}</span></div>
+        <div class="kv"><span>TELEGRAM_BOT_TOKEN</span><span>${ok(r.secrets.token)}</span></div>
+        <div class="kv"><span>TELEGRAM_CHAT_ID</span><span>${ok(r.secrets.chat)}</span></div>
+        <div class="kv"><span>CRÉDITOS</span><span class="num">${creditsHtml(r.credits)}</span></div>
+        ${missing.length ? `<div class="muted" style="margin-top:6px">SIN COMPETICIÓN ACTIVA AHORA (NO GASTAN): ${esc(missing.join(', '))}</div>` : ''}`;
+    } catch (e) { box.innerHTML = '<span class="neg">⛔ SIN CONEXIÓN</span>'; }
+  }
+  async function detectChat() {
+    const box = view.querySelector('#conn'); box.textContent = 'BUSCANDO…';
+    try {
+      const r = await S.callPicks({ action: 'detect_chat' });
+      if (r.error) { box.innerHTML = `<span class="neg">⛔ ${r.error === 'missing_token' ? 'PRIMERO GUARDA TELEGRAM_BOT_TOKEN EN SUPABASE.' : esc(r.error)}</span>`; return; }
+      if (!r.chats.length) { box.innerHTML = '<span class="yellow">NO HAY MENSAJES. ABRE TU BOT EN TELEGRAM, ESCRÍBELE "hola" Y VUELVE A PULSAR.</span>'; return; }
+      box.innerHTML = r.chats.map(c => `<div class="kv"><span>${esc(c.name || 'CHAT')}</span><span><b class="pos" style="font-size:18px">${esc(c.id)}</b> <button class="small" data-copy="${esc(c.id)}">COPIAR</button></span></div>`).join('') +
+        '<div class="muted" style="margin-top:6px">ESTE NÚMERO ES TU TELEGRAM_CHAT_ID.</div>';
+      box.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+        try { await navigator.clipboard.writeText(b.dataset.copy); toast('COPIADO'); } catch (e) { toast('Mantén pulsado el número para copiarlo'); }
+      });
+    } catch (e) { box.innerHTML = '<span class="neg">⛔ SIN CONEXIÓN</span>'; }
   }
 
   // ---------- Exportar / importar ----------
