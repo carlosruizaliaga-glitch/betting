@@ -208,7 +208,7 @@ async function captureClosing(now: Date) {
 
 // Escribe el CLV en las apuestas cuyo partido ya tiene cuota de cierre (la app lo recibe al sincronizar).
 async function fillClv() {
-  const need = (await pickBets()).filter((r: any) => r.data.pickOutcome && r.data.clv == null);
+  const need = (await pickBets()).filter((r: any) => r.data.pickOutcome && r.data.clv == null && !r.data.clvMissed);
   if (!need.length) return 0;
   const { data: picks } = await db.from('bt_picks').select('id,closing').in('id', [...new Set(need.map((r: any) => r.data.pickId))]).not('closing', 'is', null);
   const map = new Map((picks || []).map((p: any) => [p.id, p.closing]));
@@ -216,8 +216,11 @@ async function fillClv() {
   for (const r of need) {
     const c: any = map.get(r.data.pickId);
     const fair = c && c.fair_odds && c.fair_odds[r.data.pickOutcome];
-    if (!(fair > 1) || !(+r.data.odds > 1)) continue;
-    const data = { ...r.data, closingFair: Math.round(fair * 1000) / 1000, clv: clv(+r.data.odds, fair) };
+    let data;
+    // Sin cierre (apuesta apuntada con el partido ya empezado): se marca para que la app no espere.
+    if (c && c.missed) data = { ...r.data, clvMissed: true };
+    else if (fair > 1 && +r.data.odds > 1) data = { ...r.data, closingFair: Math.round(fair * 1000) / 1000, clv: clv(+r.data.odds, fair) };
+    else continue;
     const { error } = await db.from('bt_items').update({ data, updated_at: Math.max(Date.now(), r.updated_at + 1), server_ts: new Date().toISOString() })
       .eq('id', r.id).eq('updated_at', r.updated_at);
     if (!error) n++;
