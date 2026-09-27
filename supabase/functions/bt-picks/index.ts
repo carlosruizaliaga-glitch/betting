@@ -23,7 +23,18 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
-const env = (k: string) => (Deno.env.get(k) || '').trim();
+// Lee un secreto tolerando mayúsculas/minúsculas y espacios en el nombre.
+const norm = (k: string) => k.trim().toUpperCase().replace(/[\s-]+/g, '_');
+function env(k: string) {
+  const exact = Deno.env.get(k);
+  if (exact) return exact.trim();
+  const all = Deno.env.toObject();
+  const hit = Object.keys(all).find(n => norm(n) === k);
+  return hit ? (all[hit] || '').trim() : '';
+}
+// Nombres (no valores) de los secretos propios, para diagnosticar desde la app.
+const ownSecretNames = () => Object.keys(Deno.env.toObject())
+  .filter(n => !/^(SUPABASE_|SB_|DENO_|DB_|PATH$|HOME$|HOSTNAME$|PWD$|LANG$|TZ$|NO_COLOR$|EDGE_|JWT_|VERIFY_JWT)/i.test(n)).sort();
 const isoZ = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
 type Credits = { remaining: number | null; used: number | null; last: number | null; at: string };
@@ -177,7 +188,7 @@ Deno.serve(async req => {
           else oddsError = (r.data && r.data.error_code) || ('HTTP ' + r.status);
         }
         const { data: last } = await db.from('bt_state').select('data').eq('key', 'last_scan').maybeSingle();
-        return json({ ok: true, secrets, oddsError, credits: credits || await loadCredits(), sports, lastScan: last && last.data });
+        return json({ ok: true, secrets, names: ownSecretNames(), oddsError, credits: credits || await loadCredits(), sports, lastScan: last && last.data });
       }
       case 'detect_chat': {
         if (!env('TELEGRAM_BOT_TOKEN')) return json({ error: 'missing_token' });
