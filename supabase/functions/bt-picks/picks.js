@@ -39,6 +39,18 @@ function h2h(bookmaker, ev) {
   return OUTCOMES.every(o => r[o] > 1) ? r : null;
 }
 
+// Cuota de cierre: probabilidades y cuotas justas de Pinnacle para un partido (o null).
+export function pinnacleFair(ev, method) {
+  const pinBook = (ev.bookmakers || []).find(b => b.key === 'pinnacle');
+  const pin = pinBook && h2h(pinBook, ev);
+  if (!pin) return null;
+  const prob = devig(pin, method);
+  return { pin_odds: pin, fair_prob: prob, fair_odds: Object.fromEntries(OUTCOMES.map(o => [o, 1 / prob[o]])), devig: method };
+}
+
+// CLV = mi cuota / cuota justa de cierre − 1.
+export const clv = (myOdds, closingFair) => myOdds / closingFair - 1;
+
 // events: respuesta de /v4/sports/{key}/odds. Devuelve un pick por partido con Pinnacle.
 export function buildPicks(events, opts) {
   const { league, sportKey, threshold = 3, method = 'power', now = new Date(), capturedAt = new Date() } = opts;

@@ -4,7 +4,7 @@
 
   const DEFAULT_SETTINGS = {
     id: 'settings', books: ['bet365'], sports: ['⚽'], types: ['1X2', 'Combinada'], tipsters: ['Carlos'], leagues: [],
-    unit: 1, lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: []
+    unit: 1, lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: [], autoSend: { on: false, time: '10:00' }
   };
 
   // ---------- Acceso a datos ----------
@@ -309,7 +309,7 @@
       const p = L.profit(b);
       html += `<div class="item tap" data-id="${b.id}"><div class="grow"><div class="ellipsis"><b>${esc(selText(b))}</b></div>
         <div class="muted ellipsis">${esc(b.sport)} ${esc(b.type)} · ${esc(b.book)}${b.league ? ' · ' + esc(b.league) : ''}${b.tipster ? ' · ' + esc(b.tipster) : ''}${b.level ? ' · N' + b.level : ''}</div></div>
-        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div></div></div>`;
+        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${typeof b.clv === 'number' ? `<div class="muted">CLV <span class="${cls(b.clv)}">${spct(b.clv)}</span></div>` : b.pickId ? '<div class="muted">CLV PENDIENTE</div>' : ''}</div></div>`;
     });
     if (open) html += '</div>';
     view.innerHTML = html;
@@ -339,7 +339,7 @@
       return `<div class="chips scroll-x" data-chips="${k}">${vals.map(v => `<button type="button" class="${v === b[k] ? 'on' : ''}" data-v="${esc(v)}">${esc(v)}</button>`).join('')}</div>`;
     };
     const m = sheet(`<h3>${isNew ? '+ NUEVA APUESTA' : 'EDITAR APUESTA'}</h3>
-      ${b.fair ? `<div class="muted">PICK · CUOTA JUSTA PINNACLE <b class="cyan">${odds(b.fair)}</b></div>` : ''}
+      ${b.fair ? `<div class="muted">PICK · CUOTA JUSTA PINNACLE <b class="cyan">${odds(b.fair)}</b>${b.closingFair ? ` · CIERRE <b class="cyan">${odds(b.closingFair)}</b> · CLV <b class="${cls(b.clv)}">${spct(b.clv, 2)}</b>` : b.pickId ? ' · CLV AL EMPEZAR EL PARTIDO' : ''}</div>` : ''}
       <div id="legs"></div>
       <button type="button" class="small" id="addLeg" style="margin-top:2px">+ SELECCIÓN (COMBINADA)</button>
       <label>NIVEL DE STAKE · DISPONIBLE ${eur(avail)} · UNIDAD ${fnum(st.unit, 2).replace(/,00$/, '')} %</label>
@@ -436,6 +436,8 @@
         created: b.created || Date.now()
       });
       if (b.level != null && L.r2(s) !== L.stakeFor(avail, b.level, st.unit) && isNew) b.levelManual = true;
+      if (b.closingFair && b.legs.length === 1) b.clv = b.odds / b.closingFair - 1;
+      else if (b.legs.length > 1) { delete b.clv; delete b.closingFair; }
       if (L.isClosed(b) && !wasClosed) b.closedAt = Date.now();
       if (!L.isClosed(b)) delete b.closedAt;
       S.put('bet', b);
@@ -592,8 +594,9 @@
         ${kv('CLV MEDIO', clv.avg == null ? '—' : `<span class="${cls(clv.avg)}">${spct(clv.avg, 2)}</span>`)}
         ${kv('APUESTAS CON CLV +', clv.pos == null ? '—' : pct(clv.pos, 0))}
         ${kv('MUESTRA', `<b class="${clvN >= goal ? 'pos' : 'yellow'}">${clvN} / ${goal}</b>`)}
+        ${kv('ESPERANDO CIERRE', bs.filter(b => b.pickId && typeof b.clv !== 'number' && (b.legs || []).length <= 1).length)}
         <div style="height:4px;background:var(--line);margin-top:6px"><div style="height:4px;width:${Math.min(100, clvN / goal * 100)}%;background:var(--cyan)"></div></div>
-        <div class="muted" style="margin-top:8px">REGLA: CONFIAR SOLO CON CLV MEDIO &gt; +1 % EN 300+ APUESTAS. SE RELLENA SOLO CON APUESTAS HECHAS DESDE UN PICK (FASE 3).</div>
+        <div class="muted" style="margin-top:8px">REGLA: CONFIAR SOLO CON CLV MEDIO &gt; +1 % EN 300+ APUESTAS. SE RELLENA SOLO CON LAS APUESTAS HECHAS DESDE UN PICK: AL EMPEZAR EL PARTIDO SE GUARDA LA CUOTA DE CIERRE DE PINNACLE.</div>
       </div>
       <h2>PICOS Y CAÍDAS · BENEFICIO ACUMULADO</h2>
       <div class="card">
@@ -695,6 +698,10 @@
         <label>QUITAR EL MARGEN DE PINNACLE</label>
         <div class="seg"><button data-dv="power" class="${st.devig !== 'mult' ? 'on' : ''}">POWER</button><button data-dv="mult" class="${st.devig === 'mult' ? 'on' : ''}">PROPORCIONAL</button></div>
         <div class="muted" style="margin-top:6px">PROPORCIONAL REPARTE EL MARGEN A PARTES IGUALES; POWER CARGA MÁS MARGEN A LOS NO FAVORITOS, QUE ES DONDE LAS CASAS LO PONEN DE VERDAD.</div></div>
+      <h2>ENVÍO AUTOMÁTICO DIARIO</h2>
+      <div class="card"><div class="row"><div class="grow"><div class="seg"><button data-auto="off" class="${!(st.autoSend && st.autoSend.on) ? 'on' : ''}">APAGADO</button><button data-auto="on" class="${st.autoSend && st.autoSend.on ? 'on' : ''}">ENCENDIDO</button></div></div>
+        <input id="autoTime" type="time" value="${esc((st.autoSend && st.autoSend.time) || '10:00')}" style="width:120px"></div>
+        <div class="muted" style="margin-top:6px">CADA DÍA A ESA HORA (MADRID) TE LLEGAN LOS PICKS A TELEGRAM CON EL ENVÍO POR DEFECTO. GASTA 1 CRÉDITO POR LIGA CON PARTIDOS: UNOS 10 AL DÍA ≈ 300 AL MES DE LOS 500 GRATIS. SI QUEDAN MENOS DEL 10 %, NO GASTA Y TE AVISA.</div></div>
       <h2>CONEXIÓN · THE ODDS API Y TELEGRAM</h2>
       <div class="card"><div id="conn" class="muted">PULSA COMPROBAR PARA VER EL ESTADO.</div>
         <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button></div></div>
@@ -712,7 +719,7 @@
       <h2>SESIÓN</h2>
       <div class="card"><div class="muted">ESTADO: ${st2 === 'ok' ? '<span class="pos">SINCRONIZADO</span>' : esc(String(st2).toUpperCase())}${S.lastSync() ? ' · ÚLTIMA ' + new Date(S.lastSync()).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' }) : ''}</div>
         <button class="danger block" id="logout" style="margin-top:10px">CERRAR SESIÓN EN ESTE MÓVIL</button></div>
-      <div class="muted" style="text-align:center;margin-top:18px">BETTING · FASE 2</div>`;
+      <div class="muted" style="text-align:center;margin-top:18px">BETTING · FASE 3</div>`;
     const num = (id, key, min) => view.querySelector(id).onchange = ev => {
       const v = pnum(ev.target.value);
       if (ev.target.value.trim() === '' && key !== 'unit') { saveSettings({ [key]: null }); return; }
@@ -752,6 +759,11 @@
     view.querySelector('#thr').onchange = ev => { const v = pnum(ev.target.value); if (!(v >= 0)) { toast('Número no válido'); render(); return; } saveSettings({ threshold: v }); toast('GUARDADO'); };
     view.querySelectorAll('[data-sm]').forEach(b => b.onclick = () => { saveSettings({ sendMode: b.dataset.sm }); picksMode = b.dataset.sm; });
     view.querySelectorAll('[data-dv]').forEach(b => b.onclick = () => saveSettings({ devig: b.dataset.dv }));
+    view.querySelectorAll('[data-auto]').forEach(b => b.onclick = () => saveSettings({ autoSend: Object.assign({}, settings().autoSend, { on: b.dataset.auto === 'on' }) }));
+    view.querySelector('#autoTime').onchange = ev => {
+      if (!/^\d{2}:\d{2}$/.test(ev.target.value)) { toast('Hora no válida'); return; }
+      saveSettings({ autoSend: Object.assign({}, settings().autoSend, { time: ev.target.value }) }); toast('GUARDADO');
+    };
     view.querySelector('#chk').onclick = checkConnection;
     view.querySelector('#chat').onclick = detectChat;
     view.querySelector('#toCash').onclick = () => go('cash');
@@ -779,6 +791,7 @@
         <div class="kv"><span>TELEGRAM_BOT_TOKEN</span><span>${ok(r.secrets.token)}</span></div>
         <div class="kv"><span>TELEGRAM_CHAT_ID</span><span>${ok(r.secrets.chat)}</span></div>
         <div class="kv"><span>CRÉDITOS</span><span class="num">${creditsHtml(r.credits)}</span></div>
+        ${r.autoSend ? `<div class="kv"><span>ÚLTIMO ENVÍO AUTOMÁTICO</span><span>${fdate(r.autoSend.day)}${r.autoSend.error ? ' <span class="neg">' + esc(r.autoSend.error === 'low_credits' ? 'OMITIDO: CRÉDITOS' : r.autoSend.error) + '</span>' : ''}</span></div>` : ''}
         <div class="muted" style="margin-top:6px">SECRETOS QUE VE SUPABASE: ${r.names && r.names.length ? esc(r.names.join(', ')) : 'NINGUNO'}</div>
         ${missing.length ? `<div class="muted" style="margin-top:6px">SIN COMPETICIÓN ACTIVA AHORA (NO GASTAN): ${esc(missing.join(', '))}</div>` : ''}`;
     } catch (e) { box.innerHTML = '<span class="neg">⛔ SIN CONEXIÓN</span>'; }
