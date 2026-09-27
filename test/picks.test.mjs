@@ -1,6 +1,6 @@
 // Comprueba el quitado de margen, el valor y el formato del mensaje de Telegram.
 import assert from 'assert';
-import { devig, buildPicks, formatMessages, minOdds } from '../supabase/functions/bt-picks/picks.js';
+import { devig, buildPicks, formatMessages, minOdds, pinnacleFair, clv } from '../supabase/functions/bt-picks/picks.js';
 
 const pin = { '1': 2.15, 'X': 3.55, '2': 3.45 };
 const m = devig(pin, 'mult'), p = devig(pin, 'power');
@@ -26,4 +26,10 @@ assert.strictEqual(buildPicks([{ ...ev, bookmakers: ev.bookmakers.slice(1) }], {
 assert.strictEqual(buildPicks([ev], { league: 'x', sportKey: 'y', now: new Date('2026-10-05') }).length, 0);
 assert.strictEqual(minOdds(8.49, 3), 8.75);
 assert.strictEqual(minOdds(2, 0), 2);
+// Cierre y CLV: apuesto Girona a 2,30; al cierre la justa es 2,10 → CLV +9,5 %
+const close = pinnacleFair({ ...ev, bookmakers: [book('pinnacle', [2.05, 3.6, 3.7])] }, 'power');
+assert(close && Math.abs(close.fair_odds['1'] - 1 / close.fair_prob['1']) < 1e-12);
+assert.strictEqual(Math.round(clv(2.3, 2.1) * 1000) / 1000, 0.095);
+assert(clv(2.3, close.fair_odds['1']) > 0);
+assert.strictEqual(pinnacleFair({ ...ev, bookmakers: [] }, 'power'), null);
 console.log('OK picks · power 1=' + (p['1'] * 100).toFixed(1) + '% vs proporcional ' + (m['1'] * 100).toFixed(1) + '%');
