@@ -1,6 +1,6 @@
 // Comprueba el quitado de margen, el valor y el formato del mensaje de Telegram.
 import assert from 'assert';
-import { devig, buildPicks, formatMessages } from '../supabase/functions/bt-picks/picks.js';
+import { devig, buildPicks, formatMessages, minOdds } from '../supabase/functions/bt-picks/picks.js';
 
 const pin = { '1': 2.15, 'X': 3.55, '2': 3.45 };
 const m = devig(pin, 'mult'), p = devig(pin, 'power');
@@ -18,8 +18,12 @@ assert.strictEqual(pk.best['X'].odds, 3.76);          // Betfair 3,90 neto de 5 
 assert.strictEqual(pk.value_outcome, '1');
 const msg = formatMessages([pk], { mode: 'all', threshold: 3 });
 console.log(msg.join('\n---\n'));
-assert(msg[0].includes('DOM 04/10') && msg[0].includes('18:30 Girona – Betis'));
+assert(msg[0].includes('DOM 04/10') && msg[0].includes('18:30 · Girona – Betis'));
+assert(msg[0].includes('⭐ Marathonbet 2,35 (+6%)') && msg[0].includes('bet365: <b>Girona si ≥ 2,28</b>'));
+assert(msg[0].includes('<pre>Girona  45%  justa 2,21  ⭐\nEmpate  27%  justa 3,71'));
 // Sin pinnacle no hay pick; partidos pasados se ignoran
 assert.strictEqual(buildPicks([{ ...ev, bookmakers: ev.bookmakers.slice(1) }], { league: 'x', sportKey: 'y', now: new Date('2026-10-01') }).length, 0);
 assert.strictEqual(buildPicks([ev], { league: 'x', sportKey: 'y', now: new Date('2026-10-05') }).length, 0);
+assert.strictEqual(minOdds(8.49, 3), 8.75);
+assert.strictEqual(minOdds(2, 0), 2);
 console.log('OK picks · power 1=' + (p['1'] * 100).toFixed(1) + '% vs proporcional ' + (m['1'] * 100).toFixed(1) + '%');
