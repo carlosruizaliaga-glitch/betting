@@ -134,6 +134,13 @@
     .kv:last-child { border-bottom: 0; }
     .listedit .chips button { padding-right: 6px; }
     .listedit .chips button i { font-style: normal; color: var(--neg); margin-left: 6px; }
+    .pickrow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin-top: 8px; }
+    .pk { background: #000; padding: 7px 4px; display: flex; flex-direction: column; align-items: center; gap: 1px; font-weight: 400; letter-spacing: 0; min-width: 0; }
+    .pk .o { font-size: 11px; color: var(--muted); font-weight: 600; }
+    .pk b { font-size: 16px; }
+    .pk span { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .pk.fav { border-color: var(--cyan); } .pk.fav .o { color: var(--cyan); }
+    .pk.val { border-color: var(--yellow); background: #ffd54f10; } .pk.val .o { color: var(--yellow); }
     body.noapp header, body.noapp nav.tabs, body.noapp .fab { display: none; }
   </style>
 </head>
