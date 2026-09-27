@@ -92,17 +92,26 @@ export function madrid(iso) {
   };
 }
 
+// Cuota mínima en otra casa (bet365) para superar el umbral de valor sobre la justa.
+export const minOdds = (fair, threshold) => Math.ceil(fair * (1 + threshold / 100) * 100 - 1e-9) / 100;
+export const outcomeName = (p, o) => o === '1' ? p.home : o === '2' ? p.away : 'Empate';
+
+// Ficha de un partido: una línea por resultado (en bloque de letra fija para alinear columnas),
+// el valor encontrado y la cuota mínima de bet365.
 function pickLines(p, threshold) {
   const m = madrid(p.commence_time);
-  const probs = OUTCOMES.map(o => `${o} ${pct(p.fair_prob[o])} (${dec(p.fair_odds[o], 2)})`).join(' · ');
-  const fb = p.best[p.favorite];
-  const star = e => e * 100 >= threshold ? ' ⭐' : '';
-  const lines = [`${m.time} ${esc(p.home)} – ${esc(p.away)}`, probs,
-    `➜ ${p.favorite}` + (fb ? ` · mejor: ${esc(fb.book)} ${dec(fb.odds, 2)} (${spct(fb.edge)})${star(fb.edge)}` : '')];
-  if (p.value_outcome && p.value_outcome !== p.favorite) {
+  const cut = s => s.length > 16 ? s.slice(0, 15) + '…' : s;
+  const names = Object.fromEntries(OUTCOMES.map(o => [o, cut(outcomeName(p, o))]));
+  const w = Math.max(...OUTCOMES.map(o => names[o].length));
+  const rows = OUTCOMES.map(o => `${names[o].padEnd(w)}  ${pct(p.fair_prob[o]).padStart(3)}  justa ${dec(p.fair_odds[o], 2)}` +
+    (p.value_outcome === o ? '  ⭐' : ''));
+  const target = p.value_outcome || p.favorite;
+  const lines = [`🕕 <b>${m.time} · ${esc(p.home)} – ${esc(p.away)}</b>`, `<pre>${esc(rows.join('\n'))}</pre>`];
+  if (p.value_outcome) {
     const v = p.best[p.value_outcome];
-    lines.push(`⭐ VALOR ${p.value_outcome} · ${esc(v.book)} ${dec(v.odds, 2)} (${spct(v.edge)})`);
+    lines.push(`⭐ ${esc(v.book)} ${dec(v.odds, 2)} (${spct(v.edge)})`);
   }
+  lines.push(`🎯 bet365: <b>${esc(outcomeName(p, target))} si ≥ ${dec(minOdds(p.fair_odds[target], threshold), 2)}</b>`);
   return lines.join('\n');
 }
 

@@ -542,12 +542,13 @@
             <span class="o">${o}${isVal ? ' ⭐' : isFav ? ' ➜' : ''}</span>
             <b>${fnum(p.fair_prob[o] * 100, 0)} %</b>
             <span>JUSTA ${odds(p.fair_odds[o])}</span>
+            <span class="cyan">B365 ≥ ${odds(Math.ceil(p.fair_odds[o] * (1 + st.threshold / 100) * 100 - 1e-9) / 100)}</span>
             <span class="muted">${b ? esc(b.book) : '—'}</span>
             <span class="${b && b.edge > 0 ? 'pos' : 'muted'}">${b ? `${odds(b.odds)} (${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)` : ''}</span>
           </button>`;
         }).join('')}</div></div>`;
     });
-    html += `<div class="muted" style="margin:10px 0">TOCA 1, X O 2 PARA APUNTAR LA APUESTA CON EL PARTIDO Y LA CUOTA JUSTA YA PUESTOS. BET365 NO ESTÁ EN LA API: COMPARA TÚ SU CUOTA CON LA JUSTA.</div>`;
+    html += `<div class="muted" style="margin:10px 0">TOCA 1, X O 2 PARA APUNTAR LA APUESTA CON EL PARTIDO Y LA CUOTA JUSTA YA PUESTOS. B365 ≥ ES LA CUOTA MÍNIMA DE BET365 PARA QUE HAYA VALOR (JUSTA + UMBRAL).</div>`;
     view.innerHTML = html;
     view.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { picksMode = b.dataset.pm; render(); });
     view.querySelector('#scanSend').onclick = () => runScan(true);
