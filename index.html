@@ -24,7 +24,7 @@
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; border-radius: 0 !important; }
     html, body { margin: 0; background: var(--bg); color: var(--text);
       font: 14px/1.45 "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
-    body { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+    body { padding-bottom: calc(140px + env(safe-area-inset-bottom)); }
     header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
       padding: calc(8px + env(safe-area-inset-top)) 14px 8px; display: flex; align-items: center; gap: 10px; }
     header img { width: 28px; height: 28px; }
@@ -71,9 +71,12 @@
     .btn-w { color: var(--pos); border-color: var(--pos); background: var(--pos-soft); }
     .btn-l { color: var(--neg); border-color: var(--neg); background: var(--neg-soft); }
     .btn-v { color: var(--muted); }
-    .fab { position: fixed; left: calc((100% - 64px) * 2 / 5 + 4px); bottom: calc(8px + env(safe-area-inset-bottom)); width: 56px; height: 56px;
-      font-size: 30px; line-height: 1; padding: 0; background: var(--pos); border: 2px solid #000; color: #000; z-index: 8; font-weight: 800; box-shadow: 0 0 0 1px var(--pos); }
-    nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; display: grid; grid-template-columns: 1fr 1fr 64px 1fr 1fr 1fr; background: #000;
+    /* Botón flotante "+" (estilo WhatsApp): abajo a la derecha, encima de la barra, siempre visible al hacer scroll. */
+    .fab { position: fixed; right: max(16px, calc((100% - 680px) / 2 + 16px)); bottom: calc(76px + env(safe-area-inset-bottom)); width: 58px; height: 58px;
+      font-size: 32px; line-height: 1; padding: 0; background: var(--pos); border: 0; color: #000; z-index: 8; font-weight: 800;
+      box-shadow: 0 6px 18px rgba(0, 230, 118, .28), 0 2px 8px rgba(0, 0, 0, .7); transition: transform .12s; }
+    .fab:active { transform: scale(.92); }
+    nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; display: grid; grid-template-columns: repeat(5, 1fr); background: #000;
       border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
     nav.tabs button { background: none; border: 0; padding: 9px 0 11px; font-size: 9px; letter-spacing: .06em;
       color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 3px; font-weight: 600; min-width: 0; }
@@ -178,13 +181,12 @@
   <nav class="tabs">
     <button data-tab="home" class="active"><span class="ic">◉</span>INICIO</button>
     <button data-tab="bets"><span class="ic">≡</span>APUESTAS</button>
-    <span></span>
     <button data-tab="picks"><span class="ic">⚡</span>PICKS</button>
     <button data-tab="stats"><span class="ic">▲</span>STATS</button>
     <button data-tab="settings"><span class="ic">⚙</span>AJUSTES</button>
   </nav>
-  <script src="logic.js?v=7"></script>
-  <script src="store.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="logic.js?v=8"></script>
+  <script src="store.js?v=8"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
