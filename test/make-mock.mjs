@@ -28,6 +28,7 @@ const bet = (n, d, sel, lvl, stake, odds, result, extra = {}) => ({ id: 'b-mock-
 const items = [
   bet(1, '2026-10-01', 'Equipo A', 4, 0.6, 1.8, 'W'), bet(2, '2026-10-01', 'Equipo B', 5, 0.72, 1.66, 'L'),
   bet(3, '2026-10-02', 'Equipo C', 6, 0.82, 1.42, 'W'), bet(4, '2026-10-05', 'Equipo D', 3, 0.33, 2.2, 'P'),
+  bet(5, '2026-10-12', 'Equipo Verde', 4, 0.6, 2.8, 'P', { pickId: 'e2', pickOutcome: '1', pickMarket: 'h2h', fair: 2.71, commence: day(13, '19:00') }),
   { id: 'm-mock-1', kind: 'movement', updated_at: 1, deleted: false, data: { id: 'm-mock-1', date: '2026-10-01', book: 'bet365', type: 'deposit', amount: 15, created: 0 } },
   { id: 'settings', kind: 'settings', updated_at: 1, deleted: false, data: { id: 'settings', books: ['bet365'], sports: ['⚽', '🏀', '🎾'], types: ['1X2', 'Combinada'],
     tipsters: ['Prueba'], leagues: [], unit: 1, threshold: 3, sendMode: 'value', devig: 'power', totals: true, autoSend: { on: true, time: '12:00' },
