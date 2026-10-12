@@ -236,53 +236,63 @@
         <td class="num ${cls(r.profit)}">${seur(r.profit)}</td><td class="num ${cls(r.yield)}">${spct(r.yield)}</td></tr>`).join('')}</table>`;
   }
 
-  // Gráfico de línea del bank con cruceta al tocar/pasar el dedo.
-  let chartPts = [];
-  function bankChart(series) {
-    if (series.length < 2) return '<div class="empty">AÚN NO HAY DATOS</div>';
-    const W = 600, H = 176, pl = 4, pr = 64, pt = 10, pb = 26;
-    const vals = series.map(p => p.value), lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
+  // Gráficos de línea con cruceta al tocar/pasar el dedo. Cada gráfico guarda sus puntos para el tooltip.
+  const charts = {};
+  // opts: { id, label, axis(v), tip(p), color, area, refs: [{ v, label, col }] }
+  function lineChart(series, opts) {
+    if (series.length < 2) return '<div class="empty">AÚN NO HAY DATOS SUFICIENTES</div>';
+    const W = 600, H = 176, pl = 4, pr = 70, pt = 10, pb = 26;
+    const refs = opts.refs || [];
+    const vals = series.map(p => p.value).concat(refs.map(r => r.v));
+    const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
     const x = i => pl + (W - pl - pr) * i / (series.length - 1);
     const y = v => pt + (H - pt - pb) * (1 - (v - lo) / span);
-    chartPts = series.map((p, i) => ({ x: x(i), y: y(p.value), p }));
-    const d = chartPts.map((q, i) => (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' ');
-    const last = chartPts[chartPts.length - 1];
-    const col = last.p.value >= series[0].value ? 'var(--pos)' : 'var(--neg)';
-    return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del bank">
-      <defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00e676" stop-opacity=".22"/><stop offset="1" stop-color="#00e676" stop-opacity="0"/></linearGradient></defs>
-      <line x1="${pl}" x2="${W - pr}" y1="${y(hi)}" y2="${y(hi)}" stroke="var(--line)" stroke-dasharray="3 4"/>
-      <line x1="${pl}" x2="${W - pr}" y1="${y(lo)}" y2="${y(lo)}" stroke="var(--line)" stroke-dasharray="3 4"/>
-      <text x="${W - pr + 6}" y="${y(hi) + 4}" fill="var(--muted)" font-size="12" font-family="inherit">${fnum(hi)}</text>
-      <text x="${W - pr + 6}" y="${y(lo) + 4}" fill="var(--muted)" font-size="12" font-family="inherit">${fnum(lo)}</text>
-      <path d="${d} L${last.x.toFixed(1)} ${H - pb} L${pl} ${H - pb} Z" fill="url(#gA)"/>
+    const pts = series.map((p, i) => ({ x: x(i), y: y(p.value), p }));
+    charts[opts.id] = { pts, tip: opts.tip };
+    const d = pts.map((q, i) => (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' ');
+    const last = pts[pts.length - 1], col = opts.color;
+    const hline = (v, stroke, label, lcol) => `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="${stroke}" stroke-dasharray="3 4"/>
+      <text x="${W - pr + 6}" y="${y(v) + 4}" fill="${lcol || 'var(--muted)'}" font-size="12" font-family="inherit">${label}</text>`;
+    const axisLines = refs.length ? refs.map(r => hline(r.v, r.col || 'var(--line)', r.label, r.col)).join('')
+      : hline(hi, 'var(--line)', opts.axis(hi)) + hline(lo, 'var(--line)', opts.axis(lo));
+    return `<div class="chart" data-chart="${opts.id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label)}">
+      <defs><linearGradient id="gA-${opts.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00e676" stop-opacity=".22"/><stop offset="1" stop-color="#00e676" stop-opacity="0"/></linearGradient></defs>
+      ${axisLines}
+      ${opts.area ? `<path d="${d} L${last.x.toFixed(1)} ${H - pb} L${pl} ${H - pb} Z" fill="url(#gA-${opts.id})"/>` : ''}
       <path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>
       <circle cx="${last.x}" cy="${last.y}" r="4" fill="${col}"/>
       <text x="${pl}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit">${fdate(series[0].date)}</text>
       <text x="${W - pr}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit" text-anchor="end">${fdate(last.p.date)}</text>
-      <line id="cx" y1="${pt}" y2="${H - pb}" stroke="var(--muted)" visibility="hidden"/>
-      <circle id="cd" r="5" fill="#000" stroke="${col}" stroke-width="2" visibility="hidden"/>
-      <rect x="0" y="0" width="${W}" height="${H}" fill="transparent" id="hit"/>
+      <line class="cx" y1="${pt}" y2="${H - pb}" stroke="var(--muted)" visibility="hidden"/>
+      <circle class="cd" r="5" fill="#000" stroke="${col}" stroke-width="2" visibility="hidden"/>
+      <rect x="0" y="0" width="${W}" height="${H}" fill="transparent"/>
     </svg><div class="tip"></div></div>`;
   }
+  function bankChart(series) {
+    const col = series.length && series[series.length - 1].value >= series[0].value ? 'var(--pos)' : 'var(--neg)';
+    return lineChart(series, { id: 'bank', label: 'Evolución del bank', axis: v => fnum(v), color: col, area: true,
+      tip: p => `${fdate(p.date)} · <b>${eur(p.value)}</b>${p.bet ? `<br>${esc(selText(p.bet))} <span class="${cls(p.delta)}">${seur(p.delta)}</span>` : `<br>CAJA ${seur(p.delta)}`}` });
+  }
   function wireChart() {
-    const box = view.querySelector('.chart'); if (!box) return;
-    const svg = box.querySelector('svg'), tip = box.querySelector('.tip'), cx = svg.querySelector('#cx'), cd = svg.querySelector('#cd');
-    const show = ev => {
-      const r = svg.getBoundingClientRect(), vx = (ev.clientX - r.left) * 600 / r.width;
-      let best = chartPts[0];
-      chartPts.forEach(q => { if (Math.abs(q.x - vx) < Math.abs(best.x - vx)) best = q; });
-      cx.setAttribute('x1', best.x); cx.setAttribute('x2', best.x); cx.setAttribute('visibility', 'visible');
-      cd.setAttribute('cx', best.x); cd.setAttribute('cy', best.y); cd.setAttribute('visibility', 'visible');
-      const p = best.p;
-      tip.innerHTML = `${fdate(p.date)} · <b>${eur(p.value)}</b>${p.bet ? `<br>${esc(selText(p.bet))} <span class="${cls(p.delta)}">${seur(p.delta)}</span>` : `<br>CAJA ${seur(p.delta)}`}`;
-      tip.style.display = 'block';
-      const px = best.x * r.width / 600;
-      tip.style.left = Math.max(0, Math.min(r.width - tip.offsetWidth, px - tip.offsetWidth / 2)) + 'px';
-    };
-    const hide = () => { tip.style.display = 'none'; cx.setAttribute('visibility', 'hidden'); cd.setAttribute('visibility', 'hidden'); };
-    svg.addEventListener('pointermove', show);
-    svg.addEventListener('pointerdown', show);
-    svg.addEventListener('pointerleave', hide);
+    view.querySelectorAll('.chart[data-chart]').forEach(box => {
+      const c = charts[box.dataset.chart]; if (!c) return;
+      const svg = box.querySelector('svg'), tip = box.querySelector('.tip'), cx = svg.querySelector('.cx'), cd = svg.querySelector('.cd');
+      const show = ev => {
+        const r = svg.getBoundingClientRect(), vx = (ev.clientX - r.left) * 600 / r.width;
+        let best = c.pts[0];
+        c.pts.forEach(q => { if (Math.abs(q.x - vx) < Math.abs(best.x - vx)) best = q; });
+        cx.setAttribute('x1', best.x); cx.setAttribute('x2', best.x); cx.setAttribute('visibility', 'visible');
+        cd.setAttribute('cx', best.x); cd.setAttribute('cy', best.y); cd.setAttribute('visibility', 'visible');
+        tip.innerHTML = c.tip(best.p);
+        tip.style.display = 'block';
+        const px = best.x * r.width / 600;
+        tip.style.left = Math.max(0, Math.min(r.width - tip.offsetWidth, px - tip.offsetWidth / 2)) + 'px';
+      };
+      const hide = () => { tip.style.display = 'none'; cx.setAttribute('visibility', 'hidden'); cd.setAttribute('visibility', 'hidden'); };
+      svg.addEventListener('pointermove', show);
+      svg.addEventListener('pointerdown', show);
+      svg.addEventListener('pointerleave', hide);
+    });
   }
 
   // ---------- APUESTAS ----------
@@ -309,7 +319,7 @@
       const p = L.profit(b);
       html += `<div class="item tap" data-id="${b.id}"><div class="grow"><div class="ellipsis"><b>${esc(selText(b))}</b></div>
         <div class="muted ellipsis">${esc(b.sport)} ${esc(b.type)} · ${esc(b.book)}${b.league ? ' · ' + esc(b.league) : ''}${b.tipster ? ' · ' + esc(b.tipster) : ''}${b.level ? ' · N' + b.level : ''}</div></div>
-        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${typeof b.clv === 'number' ? `<div class="muted">CLV <span class="${cls(b.clv)}">${spct(b.clv)}</span></div>` : b.pickId ? `<div class="muted">${b.clvMissed ? 'SIN CIERRE' : 'CLV PENDIENTE'}</div>` : ''}</div></div>`;
+        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${b.autoSettled ? `<div class="muted">${esc(b.score || '')} · AUTO</div>` : ''}${typeof b.clv === 'number' ? `<div class="muted">CLV <span class="${cls(b.clv)}">${spct(b.clv)}</span></div>` : b.pickId ? `<div class="muted">${b.clvMissed ? 'SIN CIERRE' : 'CLV PENDIENTE'}</div>` : ''}</div></div>`;
     });
     if (open) html += '</div>';
     view.innerHTML = html;
@@ -438,6 +448,7 @@
         created: b.created || Date.now()
       });
       if (b.level != null && L.r2(s) !== L.stakeFor(avail, b.level, st.unit) && isNew) b.levelManual = true;
+      if (existing && existing.autoSettled && b.result !== existing.result) { delete b.autoSettled; delete b.score; }
       if (b.closingFair && b.legs.length === 1) b.clv = b.odds / b.closingFair - 1;
       else if (b.legs.length > 1) { delete b.clv; delete b.closingFair; }
       if (L.isClosed(b) && !wasClosed) b.closedAt = Date.now();
@@ -651,6 +662,17 @@
   }
 
   // ---------- ESTADÍSTICAS ----------
+  const EDGE_KEYS = ['≥ UMBRAL', 'JUSTA–UMBRAL', 'BAJO JUSTA'];
+  // Tabla de CLV agrupado: n, CLV medio, % positivas, beneficio y yield.
+  function clvTable(rows, keepEmpty) {
+    const list = keepEmpty ? rows : rows.filter(r => r.n);
+    if (!list.some(r => r.n)) return '<div class="muted">SIN APUESTAS CON CLV TODAVÍA</div>';
+    return `<table class="tbl"><tr><th></th><th>N</th><th>CLV</th><th>CLV+</th><th>BENEF.</th><th>YIELD</th></tr>
+      ${list.map(r => `<tr><td class="ellipsis" style="max-width:120px">${esc(r.key)}</td><td class="num">${r.n}</td>
+        <td class="num ${cls(r.avg)}">${r.n ? spct(r.avg, 1) : '—'}</td><td class="num">${r.n ? pct(r.pos, 0) : '—'}</td>
+        <td class="num ${cls(r.profit)}">${r.n ? (r.profit > 0 ? '+' : '') + fnum(r.profit) : '—'}</td><td class="num ${cls(r.yield)}">${r.n ? spct(r.yield, 0) : '—'}</td></tr>`).join('')}</table>`;
+  }
+
   function renderStats() {
     const all = bets(), t = today();
     const inPeriod = b => statsPeriod === 'TOTAL' ? true
@@ -665,7 +687,7 @@
     const groups = statsBy === 'odds' ? L.groupBy(bs, b => L.oddsRange(+b.odds), L.ODDS_RANGES.map(r => r.key)) : L.groupBy(bs, b => b[statsBy]);
     const kv = (k, v) => `<div class="kv"><span class="muted">${k}</span><span class="num">${v}</span></div>`;
     const orow = (k, o) => `<tr><td>${k}</td><td class="num">${o.n}</td><td class="num">${o.n ? odds(o.avg) : '—'}</td><td class="num">${o.n ? odds(o.min) : '—'}</td><td class="num">${o.n ? odds(o.max) : '—'}</td></tr>`;
-    const clvN = clv.n, goal = 300;
+    const clvN = clv.n, goal = 300, st0 = settings();
     view.innerHTML = `
       <div class="seg" style="margin-top:12px">${['7D', 'MES', 'AÑO', 'TOTAL'].map(p => `<button data-p="${p}" class="${p === statsPeriod ? 'on' : ''}">${p}</button>`).join('')}</div>
       <h2>RENDIMIENTO · APUESTAS CERRADAS</h2>
@@ -686,6 +708,18 @@
         <div style="height:4px;background:var(--line);margin-top:6px"><div style="height:4px;width:${Math.min(100, clvN / goal * 100)}%;background:var(--cyan)"></div></div>
         <div class="muted" style="margin-top:8px">REGLA: CONFIAR SOLO CON CLV MEDIO &gt; +1 % EN 300+ APUESTAS. SE RELLENA SOLO CON LAS APUESTAS HECHAS DESDE UN PICK: AL EMPEZAR EL PARTIDO SE GUARDA LA CUOTA DE CIERRE DE PINNACLE.</div>
       </div>
+      ${clvN ? `<h2>CLV MEDIO ACUMULADO</h2>
+      <div class="card">${lineChart(L.clvSeries(bs), { id: 'clv', label: 'CLV medio acumulado', color: 'var(--cyan)',
+        refs: [{ v: 0, label: '0 %' }, { v: 0.01, label: 'OBJ +1 %', col: 'var(--yellow)' }],
+        tip: p => `${fdate(p.date)} · ${p.n} APUESTAS<br>MEDIA <b class="${cls(p.value)}">${spct(p.value, 2)}</b> · ${esc(selText(p.bet))} <span class="${cls(p.bet.clv)}">${spct(p.bet.clv, 1)}</span>` })}
+        <div class="muted" style="margin-top:6px">SI LA LÍNEA SE ASIENTA POR ENCIMA DE LA AMARILLA (+1 %) CON MUCHAS APUESTAS, EL SISTEMA FUNCIONA.</div></div>
+      <h2>CLV SEGÚN TU VENTAJA AL APOSTAR</h2>
+      <div class="card">${clvTable(L.clvBy(bs, b => { const e = L.edgeAtBet(b); return e == null ? null : e * 100 >= st0.threshold ? EDGE_KEYS[0] : e >= 0 ? EDGE_KEYS[1] : EDGE_KEYS[2]; }, EDGE_KEYS), true)}
+        <div class="muted" style="margin-top:6px">VENTAJA = TU CUOTA FRENTE A LA JUSTA DEL PICK AL APOSTAR. ≥ UMBRAL: CON VALOR · JUSTA–UMBRAL: POCO VALOR · BAJO JUSTA: SIN VALOR. AQUÍ SE VE SI TE COMPENSA ESPERAR A LA CUOTA MÍNIMA (≥).</div></div>
+      <h2>CLV POR LIGA</h2>
+      <div class="card">${clvTable(L.clvBy(bs, b => b.league))}</div>
+      <h2>CLV POR MERCADO</h2>
+      <div class="card">${clvTable(L.clvBy(bs, b => b.pickMarket === 'totals' ? 'MÁS/MENOS' : 'GANADOR (1X2)'))}</div>` : ''}
       <h2>PICOS Y CAÍDAS · BENEFICIO ACUMULADO</h2>
       <div class="card">
         ${kv('ACTUAL', `<span class="${cls(pk.current)}">${seur(pk.current)}</span>`)}
@@ -711,6 +745,7 @@
       <div class="card">${periodTable(L.periods(all, t))}</div>`;
     view.querySelectorAll('[data-p]').forEach(el => el.onclick = () => { statsPeriod = el.dataset.p; render(); });
     view.querySelectorAll('[data-by]').forEach(el => el.onclick = () => { statsBy = el.dataset.by; render(); });
+    wireChart();
   }
 
   // ---------- CAJA ----------
@@ -794,6 +829,11 @@
       <div class="card"><div class="row"><div class="grow"><div class="seg"><button data-auto="off" class="${!(st.autoSend && st.autoSend.on) ? 'on' : ''}">APAGADO</button><button data-auto="on" class="${st.autoSend && st.autoSend.on ? 'on' : ''}">ENCENDIDO</button></div></div>
         <input id="autoTime" type="time" value="${esc((st.autoSend && st.autoSend.time) || '10:00')}" style="width:120px"></div>
         <div class="muted" style="margin-top:6px">CADA DÍA A ESA HORA (MADRID) TE LLEGAN LOS PICKS A TELEGRAM CON EL ENVÍO POR DEFECTO. GASTA 1 CRÉDITO POR LIGA CON PARTIDOS: UNOS 10 AL DÍA ≈ 300 AL MES DE LOS 500 GRATIS. SI QUEDAN MENOS DEL 10 %, NO GASTA Y TE AVISA.</div></div>
+      <h2>CIERRE AUTOMÁTICO DE APUESTAS</h2>
+      <div class="card"><div class="seg"><button data-aset="on" class="${st.autoSettle !== false ? 'on' : ''}">ENCENDIDO</button><button data-aset="off" class="${st.autoSettle === false ? 'on' : ''}">APAGADO</button></div>
+        <label>AVISO EN TELEGRAM AL CERRAR</label>
+        <div class="seg"><button data-anot="on" class="${st.settleNotify !== false ? 'on' : ''}">SÍ</button><button data-anot="off" class="${st.settleNotify === false ? 'on' : ''}">NO</button></div>
+        <div class="muted" style="margin-top:6px">LAS APUESTAS HECHAS DESDE UN PICK (1X2, GANADOR Y MÁS/MENOS) SE CIERRAN SOLAS CON EL MARCADOR FINAL, UNAS 2 H DESPUÉS DEL INICIO. GASTA 2 CRÉDITOS POR LIGA Y CONSULTA (COMO MUCHO UNA CADA 30 MIN). PUEDES CORREGIRLAS A MANO. EN FÚTBOL CUENTA EL RESULTADO QUE DA LA API (EN COPAS CON PRÓRROGA, REVÍSALO).</div></div>
       <h2>CONEXIÓN · THE ODDS API Y TELEGRAM</h2>
       <div class="card"><div id="conn" class="muted">PULSA COMPROBAR PARA VER EL ESTADO.</div>
         <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button></div></div>
@@ -848,6 +888,8 @@
     view.querySelectorAll('[data-sm]').forEach(b => b.onclick = () => { saveSettings({ sendMode: b.dataset.sm }); picksMode = b.dataset.sm; });
     view.querySelectorAll('[data-dv]').forEach(b => b.onclick = () => saveSettings({ devig: b.dataset.dv }));
     view.querySelectorAll('[data-auto]').forEach(b => b.onclick = () => saveSettings({ autoSend: Object.assign({}, settings().autoSend, { on: b.dataset.auto === 'on' }) }));
+    view.querySelectorAll('[data-aset]').forEach(b => b.onclick = () => saveSettings({ autoSettle: b.dataset.aset === 'on' }));
+    view.querySelectorAll('[data-anot]').forEach(b => b.onclick = () => saveSettings({ settleNotify: b.dataset.anot === 'on' }));
     view.querySelector('#autoTime').onchange = ev => {
       if (!/^\d{2}:\d{2}$/.test(ev.target.value)) { toast('Hora no válida'); return; }
       saveSettings({ autoSend: Object.assign({}, settings().autoSend, { time: ev.target.value }) }); toast('GUARDADO');
