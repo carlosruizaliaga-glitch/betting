@@ -6,9 +6,10 @@
 //   detect_chat  → lee getUpdates del bot para encontrar tu chat_id
 //   picks        → picks guardados de las próximas horas (no gasta créditos)
 //   scan         → { mode: 'value'|'all', send: true, confirmLow: false }
+//                  (manual: ligas activas + Más/Menos en fútbol; auto: solo ligas ⭐ y solo ganador)
 // POST { action: 'cron', cronKey } (pg_cron cada 5 min): cuota de cierre, CLV y envío diario.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { BOOKS, buildPicks, formatMessages, pinnacleFair, clv } from './picks.js';
+import { BOOKS, buildPicks, formatMessages, pinnacleFair, clv, sportOf } from './picks.js';
 
 const ODDS = 'https://api.the-odds-api.com/v4';
 const CACHE_MIN = 30;
@@ -68,6 +69,8 @@ async function settings() {
   const s = (data && data.data) || {};
   return {
     scan: (s.scan || []).filter((l: any) => l.on && l.key),
+    fav: (s.scan || []).filter((l: any) => l.on && l.fav && l.key),
+    totals: s.totals !== false,
     threshold: s.threshold != null ? +s.threshold : 3,
     sendMode: s.sendMode === 'all' ? 'all' : 'value',
     devig: s.devig === 'mult' ? 'mult' : 'power'
@@ -93,11 +96,15 @@ async function scan(body: any) {
   if (!env('ODDS_API_KEY')) return { error: 'missing_odds_key' };
   const st = await settings();
   const mode = body.mode === 'all' || body.mode === 'value' ? body.mode : st.sendMode;
+  // Envío automático: solo ligas ⭐ (si no hay ninguna, todas las activas) y solo mercado ganador.
+  const scanList = body.auto && st.fav.length ? st.fav : st.scan;
+  const marketsFor = (key: string) => !body.auto && st.totals && sportOf(key) === 'soccer' ? 'h2h,totals' : 'h2h';
+  const covers = (have: string, want: string) => want.split(',').every(m => (have || 'h2h').split(',').includes(m));
   const now = new Date(), to = new Date(now.getTime() + WINDOW_H * 3600e3);
   const window = { commenceTimeFrom: isoZ(now), commenceTimeTo: isoZ(to) };
 
   // 1) Qué ligas tienen partidos en 72 h (el endpoint /events no gasta créditos).
-  const leagues = await Promise.all(st.scan.map(async (l: any) => {
+  const leagues = await Promise.all(scanList.map(async (l: any) => {
     const r = await oddsGet(`/sports/${l.key}/events`, window);
     const n = r.ok && Array.isArray(r.data) ? r.data.length : 0;
     return { ...l, events: n, error: r.ok ? null : (r.data && r.data.error_code) || ('HTTP ' + r.status) };
@@ -109,9 +116,10 @@ async function scan(body: any) {
   // 2) Caché de 30 min: no se vuelve a pagar una liga pedida hace poco.
   const fresh = new Date(now.getTime() - CACHE_MIN * 60e3).toISOString();
   const { data: cached } = await db.from('bt_odds_cache').select('*').in('sport_key', active.map(l => l.key)).gte('fetched_at', fresh);
-  const cacheMap = new Map((cached || []).map((c: any) => [c.sport_key, c]));
+  const cacheMap = new Map((cached || []).filter((c: any) => covers(c.markets, marketsFor(c.sport_key))).map((c: any) => [c.sport_key, c]));
   const toFetch = active.filter(l => !cacheMap.has(l.key));
-  const cost = toFetch.length; // markets (1) × regiones (4 casas = 1)
+  // Coste = mercados × regiones (hasta 10 casas = 1 región).
+  const cost = toFetch.reduce((n, l) => n + marketsFor(l.key).split(',').length, 0);
 
   // 3) Aviso si la pulsación deja la cuota por debajo del 10 %.
   if (cost > 0 && credits && credits.remaining != null) {
@@ -125,10 +133,11 @@ async function scan(body: any) {
 
   // 4) Cuotas h2h de las ligas que faltan.
   const fetched = await Promise.all(toFetch.map(async l => {
-    const r = await oddsGet(`/sports/${l.key}/odds`, { ...window, bookmakers: BOOKS.join(','), markets: 'h2h', oddsFormat: 'decimal' });
+    const markets = marketsFor(l.key);
+    const r = await oddsGet(`/sports/${l.key}/odds`, { ...window, bookmakers: BOOKS.join(','), markets, oddsFormat: 'decimal' });
     if (r.ok && Array.isArray(r.data)) {
-      await db.from('bt_odds_cache').upsert({ sport_key: l.key, fetched_at: new Date().toISOString(), data: r.data });
-      return { key: l.key, data: r.data, fetched_at: new Date().toISOString() };
+      await db.from('bt_odds_cache').upsert({ sport_key: l.key, fetched_at: new Date().toISOString(), data: r.data, markets });
+      return { key: l.key, data: r.data, fetched_at: new Date().toISOString(), markets };
     }
     return { key: l.key, error: (r.data && r.data.message) || ('HTTP ' + r.status) };
   }));
@@ -139,10 +148,22 @@ async function scan(body: any) {
   for (const l of active) {
     const src: any = fetchedMap.get(l.key) || cacheMap.get(l.key);
     if (!src) continue;
-    picks = picks.concat(buildPicks(src.data, { league: l.name, sportKey: l.key, threshold: st.threshold, method: st.devig, now, capturedAt: new Date(src.fetched_at) })
+    picks = picks.concat(buildPicks(src.data, { league: l.name, sportKey: l.key, threshold: st.threshold, method: st.devig, now,
+      capturedAt: new Date(src.fetched_at), withTotals: (src.markets || 'h2h').includes('totals') })
       .filter(p => new Date(p.commence_time) <= to));
   }
   if (picks.length) {
+    // Movimiento: se conserva la primera captura de cada partido.
+    const prev = new Map();
+    for (let i = 0; i < picks.length; i += 200) {
+      const { data } = await db.from('bt_picks').select('id,first_fair_prob,first_captured_at').in('id', picks.slice(i, i + 200).map(p => p.id));
+      for (const r of data || []) prev.set(r.id, r);
+    }
+    for (const p of picks) {
+      const o: any = prev.get(p.id);
+      p.first_fair_prob = (o && o.first_fair_prob) || p.fair_prob;
+      p.first_captured_at = (o && o.first_captured_at) || p.captured_at;
+    }
     const { error } = await db.from('bt_picks').upsert(picks);
     if (error) throw error;
   }
@@ -182,8 +203,12 @@ async function pickBets() {
 // Cuota de cierre de Pinnacle: solo partidos con apuesta tuya, entre 6 min antes y 1 min después
 // del inicio (con la tarea cada 5 min siempre cae una vez). 1 crédito por partido.
 async function captureClosing(now: Date) {
-  const ids = [...new Set((await pickBets()).map((r: any) => r.data.pickId))];
+  const bets = await pickBets();
+  const ids = [...new Set(bets.map((r: any) => r.data.pickId))];
   if (!ids.length) return { fetched: 0, missed: 0 };
+  // Línea de Más/Menos apostada en cada partido (si la hay): se pide también ese mercado (1 crédito más).
+  const totPoint = new Map();
+  for (const r of bets) if (r.data.pickMarket === 'totals' && r.data.point != null) totPoint.set(r.data.pickId, +r.data.point);
   const { data: picks } = await db.from('bt_picks').select('id,sport_key,commence_time').in('id', ids).is('closing', null);
   const st = await settings();
   let fetched = 0, missed = 0;
@@ -195,8 +220,9 @@ async function captureClosing(now: Date) {
       missed++; continue;
     }
     if (!env('ODDS_API_KEY')) break;
-    const r = await oddsGet(`/sports/${p.sport_key}/events/${p.id}/odds`, { bookmakers: 'pinnacle', markets: 'h2h', oddsFormat: 'decimal' });
-    const c = r.ok ? pinnacleFair(r.data, st.devig) : null;
+    const tp = totPoint.get(p.id);
+    const r = await oddsGet(`/sports/${p.sport_key}/events/${p.id}/odds`, { bookmakers: 'pinnacle', markets: tp != null ? 'h2h,totals' : 'h2h', oddsFormat: 'decimal' });
+    const c = r.ok ? pinnacleFair(r.data, st.devig, tp) : null;
     if (c) {
       await db.from('bt_picks').update({ closing: { ...c, at: now.toISOString() }, closing_at: now.toISOString() }).eq('id', p.id);
       fetched++;
@@ -215,7 +241,8 @@ async function fillClv() {
   let n = 0;
   for (const r of need) {
     const c: any = map.get(r.data.pickId);
-    const fair = c && c.fair_odds && c.fair_odds[r.data.pickOutcome];
+    const src = c && (r.data.pickMarket === 'totals' ? (c.totals && +c.totals.point === +r.data.point ? c.totals : null) : c);
+    const fair = src && src.fair_odds && src.fair_odds[r.data.pickOutcome];
     let data;
     // Sin cierre (apuesta apuntada con el partido ya empezado): se marca para que la app no espere.
     if (c && c.missed) data = { ...r.data, clvMissed: true };
@@ -238,7 +265,7 @@ async function autoSend(now: Date) {
   const { data: last } = await db.from('bt_state').select('data').eq('key', 'auto_send').maybeSingle();
   if (last && last.data && last.data.day === day) return null;
   await db.from('bt_state').upsert({ key: 'auto_send', data: { day, at: now.toISOString() }, updated_at: now.toISOString() });
-  const r: any = await scan({ send: true });
+  const r: any = await scan({ send: true, auto: true });
   if ((r.needConfirm || r.error) && env('TELEGRAM_CHAT_ID')) {
     const why = r.needConfirm ? `quedan ${r.credits.remaining} créditos (menos del 10 %)` : r.error === 'no_credits' ? 'no quedan créditos' : r.error;
     await telegram('sendMessage', { chat_id: env('TELEGRAM_CHAT_ID'), text: `⚠️ Envío automático omitido: ${why}. Puedes enviarlo a mano desde la app.` });
@@ -274,15 +301,19 @@ Deno.serve(async req => {
     switch (body.action) {
       case 'status': {
         const secrets = { odds: !!env('ODDS_API_KEY'), token: !!env('TELEGRAM_BOT_TOKEN'), chat: !!env('TELEGRAM_CHAT_ID') };
-        let sports: string[] | null = null, oddsError = null;
+        let sports: string[] | null = null, sportsInfo: any[] | null = null, oddsError = null;
         if (secrets.odds) {
           const r = await oddsGet('/sports', {}); // no gasta créditos
-          if (r.ok) { sports = r.data.map((s: any) => s.key); await saveCredits(); }
+          if (r.ok) {
+            sports = r.data.map((s: any) => s.key);
+            sportsInfo = r.data.filter((s: any) => !s.has_outrights).map((s: any) => ({ key: s.key, title: s.title, group: s.group, description: s.description }));
+            await saveCredits();
+          }
           else oddsError = (r.data && r.data.error_code) || ('HTTP ' + r.status);
         }
         const { data: last } = await db.from('bt_state').select('data').eq('key', 'last_scan').maybeSingle();
         const { data: auto } = await db.from('bt_state').select('data').eq('key', 'auto_send').maybeSingle();
-        return json({ ok: true, secrets, names: ownSecretNames(), oddsError, credits: credits || await loadCredits(), sports, lastScan: last && last.data, autoSend: auto && auto.data });
+        return json({ ok: true, secrets, names: ownSecretNames(), oddsError, credits: credits || await loadCredits(), sports, sportsInfo, lastScan: last && last.data, autoSend: auto && auto.data });
       }
       case 'detect_chat': {
         if (!env('TELEGRAM_BOT_TOKEN')) return json({ error: 'missing_token' });

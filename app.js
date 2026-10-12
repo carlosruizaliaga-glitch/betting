@@ -332,6 +332,8 @@
       pickOutcome: (prefill && prefill.outcome) || null, commence: (prefill && prefill.commence) || null
     };
     if (prefill && prefill.sport) b.sport = prefill.sport;
+    if (prefill && prefill.type) b.type = prefill.type;
+    if (prefill && prefill.pickId) { b.pickMarket = prefill.market || 'h2h'; if (prefill.point != null) b.point = prefill.point; }
     if (!b.legs || !b.legs.length) b.legs = [{ event: '', sel: '', odds: b.odds }];
     const avail = L.funds(all, moves(), b.id).total.available;
     const chips = (k, list) => {
@@ -339,7 +341,7 @@
       return `<div class="chips scroll-x" data-chips="${k}">${vals.map(v => `<button type="button" class="${v === b[k] ? 'on' : ''}" data-v="${esc(v)}">${esc(v)}</button>`).join('')}</div>`;
     };
     const m = sheet(`<h3>${isNew ? '+ NUEVA APUESTA' : 'EDITAR APUESTA'}</h3>
-      ${b.fair ? `<div class="muted">PICK · CUOTA JUSTA PINNACLE <b class="cyan">${odds(b.fair)}</b>${b.closingFair ? ` · CIERRE <b class="cyan">${odds(b.closingFair)}</b> · CLV <b class="${cls(b.clv)}">${spct(b.clv, 2)}</b>` : b.clvMissed ? ' · SIN CIERRE (APUNTADA CON EL PARTIDO EMPEZADO)' : b.pickId ? (b.commence && new Date(b.commence) <= new Date() ? ' · <span class="yellow">PARTIDO YA EMPEZADO: NO TENDRÁ CLV</span>' : ' · CLV AL EMPEZAR EL PARTIDO') : ''}</div>` : ''}
+      ${b.fair ? `<div class="muted">PICK · CUOTA JUSTA <b class="cyan">${odds(b.fair)}</b>${b.closingFair ? ` · CIERRE <b class="cyan">${odds(b.closingFair)}</b> · CLV <b class="${cls(b.clv)}">${spct(b.clv, 2)}</b>` : b.clvMissed ? ' · SIN CIERRE (APUNTADA CON EL PARTIDO EMPEZADO)' : b.pickId ? (b.commence && new Date(b.commence) <= new Date() ? ' · <span class="yellow">PARTIDO YA EMPEZADO: NO TENDRÁ CLV</span>' : ' · CLV AL EMPEZAR EL PARTIDO') : ''}</div>` : ''}
       <div id="legs"></div>
       <button type="button" class="small" id="addLeg" style="margin-top:2px">+ SELECCIÓN (COMBINADA)</button>
       <label>NIVEL DE STAKE · DISPONIBLE ${eur(avail)} · UNIDAD ${fnum(st.unit, 2).replace(/,00$/, '')} %</label>
@@ -460,7 +462,19 @@
   try { Object.assign(pickCache, JSON.parse(localStorage.getItem(PK) || '{}')); } catch (e) { console.error(e); }
   const savePicks = patch => { Object.assign(pickCache, patch); try { localStorage.setItem(PK, JSON.stringify(pickCache)); } catch (e) { console.error(e); } };
   let picksMode = null, picksBusy = false, picksMsg = '', picksLoadedAt = 0;
-  const OUT_NAME = (p, o) => o === '1' ? p.home : o === '2' ? p.away : 'Empate';
+  const ptxt = n => fnum(n, n % 1 ? (n * 10 % 1 ? 2 : 1) : 0);
+  const OUT_NAME = (p, o) => o === '1' ? p.home : o === '2' ? p.away : o === 'X' ? 'Empate'
+    : o === 'O' ? 'Más ' + ptxt(p.totals ? p.totals.point : 2.5) : o === 'U' ? 'Menos ' + ptxt(p.totals ? p.totals.point : 2.5) : o;
+  const OUT_ORDER = ['1', 'X', '2'];
+  const outKeys = prob => OUT_ORDER.filter(o => prob && prob[o] != null);
+  const SPORT_EMOJI = { soccer: '⚽', basketball: '🏀', tennis: '🎾' };
+  const sportOf = key => String(key || '').split('_')[0];
+  const sportEmoji = key => SPORT_EMOJI[sportOf(key)] || '🏆';
+  const pickHasValue = p => !!(p.value_outcome || (p.totals && p.totals.value_outcome));
+  const minB365 = (fair, thr) => Math.ceil(fair * (1 + thr / 100) * 100 - 1e-9) / 100;
+  // Cambio de probabilidad justa (en puntos) desde la primera captura del partido.
+  const moveOf = (p, o) => p.first_fair_prob && p.first_fair_prob[o] != null && p.fair_prob[o] != null ? p.fair_prob[o] - p.first_fair_prob[o] : 0;
+  const moveHtml = d => Math.abs(d) >= 0.01 ? ` <span class="${d > 0 ? 'cyan' : 'purple'}">${d > 0 ? '↑' : '↓'}${Math.round(Math.abs(d) * 100)}</span>` : '';
 
   const ERRORS = {
     missing_odds_key: 'Falta el secreto ODDS_API_KEY en Supabase.',
@@ -511,54 +525,64 @@
     }
   }
 
+  // Casillas de un mercado: una por resultado (1/X/2, 1/2 o Más/Menos).
+  function pickCells(p, mk, market, thr) {
+    const keys = market === 'totals' ? ['O', 'U'] : outKeys(mk.fair_prob);
+    return `<div class="pickrow" style="grid-template-columns:repeat(${keys.length},1fr)">${keys.map(o => {
+      const b = mk.best && mk.best[o], isVal = mk.value_outcome === o, isFav = market === 'h2h' && p.favorite === o;
+      const label = market === 'totals' ? OUT_NAME(p, o).toUpperCase() : o;
+      return `<button class="pk${isFav ? ' fav' : ''}${isVal ? ' val' : ''}" data-pick="${esc(p.id)}" data-o="${o}" data-m="${market}">
+        <span class="o">${label}${isVal ? ' ⭐' : isFav ? ' ➜' : ''}</span>
+        <b>${fnum(mk.fair_prob[o] * 100, 0)} %${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</b>
+        <span>JUSTA ${odds(mk.fair_odds[o])}</span>
+        <span class="cyan">B365 ≥ ${odds(minB365(mk.fair_odds[o], thr))}</span>
+        <span class="muted">${b ? esc(b.book) : '—'}</span>
+        <span class="${b && b.edge > 0 ? 'pos' : 'muted'}">${b ? `${odds(b.odds)} (${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)` : ''}</span>
+      </button>`;
+    }).join('')}</div>`;
+  }
+
   function renderPicks() {
     const st = settings();
     if (!picksMode) picksMode = st.sendMode;
     if (!picksBusy && Date.now() - picksLoadedAt > 60000 && navigator.onLine) { picksLoadedAt = Date.now(); refreshPicks(); }
     const now = Date.now();
     const all = (pickCache.picks || []).filter(p => new Date(p.commence_time).getTime() > now - 2 * 3600e3);
-    const list = all.filter(p => picksMode === 'all' || p.value_outcome)
+    const list = all.filter(p => picksMode === 'all' || pickHasValue(p))
       .sort((a, b) => a.commence_time.localeCompare(b.commence_time) || a.league.localeCompare(b.league));
     const ls = pickCache.lastScan;
     let html = `<div class="card">
       <div class="num">${creditsHtml(pickCache.credits)}</div>
       ${ls ? `<div class="muted">ÚLTIMA BÚSQUEDA ${fdate(L.madridDate(new Date(ls.at)))} ${new Date(ls.at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
       <div class="seg" style="margin-top:10px"><button data-pm="value" class="${picksMode === 'value' ? 'on' : ''}">SOLO ⭐ VALOR</button><button data-pm="all" class="${picksMode === 'all' ? 'on' : ''}">TODOS</button></div>
-      <button class="primary block" id="scanSend" style="margin-top:8px;padding:15px" ${picksBusy ? 'disabled' : ''}>${picksBusy ? '…' : '⚡ PICKS 1X2 → TELEGRAM'}</button>
+      <button class="primary block" id="scanSend" style="margin-top:8px;padding:15px" ${picksBusy ? 'disabled' : ''}>${picksBusy ? '…' : '⚡ PICKS → TELEGRAM'}</button>
       <button class="small block" id="scanOnly" style="margin-top:6px" ${picksBusy ? 'disabled' : ''}>BUSCAR SIN ENVIAR</button>
       ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
-      <div class="muted" style="margin-top:8px">CADA LIGA CON PARTIDOS GASTA 1 CRÉDITO. LAS PEDIDAS HACE MENOS DE 30 MIN SON GRATIS. VALOR ≥ +${fnum(st.threshold, st.threshold % 1 ? 1 : 0)} % SOBRE LA CUOTA JUSTA.</div>
+      <div class="muted" style="margin-top:8px">CADA LIGA CON PARTIDOS GASTA 1 CRÉDITO (2 EN FÚTBOL CON MÁS/MENOS). LAS PEDIDAS HACE MENOS DE 30 MIN SON GRATIS. VALOR ≥ +${fnum(st.threshold, st.threshold % 1 ? 1 : 0)} % SOBRE LA CUOTA JUSTA.</div>
     </div>`;
     if (!list.length) html += `<div class="card empty">${all.length ? 'NINGÚN PARTIDO CON ⭐ VALOR AHORA. TOCA "TODOS" PARA VERLOS.' : 'AÚN NO HAY PICKS. PULSA EL BOTÓN.'}</div>`;
     let hdr = null;
     list.forEach(p => {
       const d = p.commence_time, day = L.madridDate(new Date(d)), h = `${esc(p.league.toUpperCase())} · ${fdateShort(day)}`;
-      if (h !== hdr) { html += `<div class="datehdr">⚽ ${h}</div>`; hdr = h; }
+      if (h !== hdr) { html += `<div class="datehdr">${sportEmoji(p.sport_key)} ${h}</div>`; hdr = h; }
       const time = new Date(d).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' });
       const started = new Date(d).getTime() <= now;
       html += `<div class="card" style="margin-top:4px;padding:10px">
-        <div class="row"><b class="grow ellipsis">${time} ${esc(p.home)} – ${esc(p.away)}</b>${p.value_outcome ? '<span class="yellow">⭐</span>' : ''}${started ? '<span class="tag">EN JUEGO</span>' : ''}</div>
-        <div class="pickrow">${['1', 'X', '2'].map(o => {
-          const b = p.best && p.best[o], isVal = p.value_outcome === o, isFav = p.favorite === o;
-          return `<button class="pk${isFav ? ' fav' : ''}${isVal ? ' val' : ''}" data-pick="${esc(p.id)}" data-o="${o}">
-            <span class="o">${o}${isVal ? ' ⭐' : isFav ? ' ➜' : ''}</span>
-            <b>${fnum(p.fair_prob[o] * 100, 0)} %</b>
-            <span>JUSTA ${odds(p.fair_odds[o])}</span>
-            <span class="cyan">B365 ≥ ${odds(Math.ceil(p.fair_odds[o] * (1 + st.threshold / 100) * 100 - 1e-9) / 100)}</span>
-            <span class="muted">${b ? esc(b.book) : '—'}</span>
-            <span class="${b && b.edge > 0 ? 'pos' : 'muted'}">${b ? `${odds(b.odds)} (${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)` : ''}</span>
-          </button>`;
-        }).join('')}</div></div>`;
+        <div class="row"><b class="grow ellipsis">${time} ${esc(p.home)} – ${esc(p.away)}</b>${pickHasValue(p) ? '<span class="yellow">⭐</span>' : ''}${started ? '<span class="tag">EN JUEGO</span>' : ''}</div>
+        ${pickCells(p, p, 'h2h', st.threshold)}${p.totals ? pickCells(p, p.totals, 'totals', st.threshold) : ''}</div>`;
     });
-    html += `<div class="muted" style="margin:10px 0">TOCA 1, X O 2 PARA APUNTAR LA APUESTA CON EL PARTIDO Y LA CUOTA JUSTA YA PUESTOS. B365 ≥ ES LA CUOTA MÍNIMA DE BET365 PARA QUE HAYA VALOR (JUSTA + UMBRAL).</div>`;
+    html += `<div class="muted" style="margin:10px 0">↑↓ = CAMBIO DE PROBABILIDAD JUSTA DESDE LA PRIMERA BÚSQUEDA. TOCA UNA CASILLA PARA APUNTAR LA APUESTA CON EL PARTIDO Y LA CUOTA JUSTA YA PUESTOS. B365 ≥ ES LA CUOTA MÍNIMA DE BET365 PARA QUE HAYA VALOR (JUSTA + UMBRAL).</div>`;
     view.innerHTML = html;
     view.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { picksMode = b.dataset.pm; render(); });
     view.querySelector('#scanSend').onclick = () => runScan(true);
     view.querySelector('#scanOnly').onclick = () => runScan(false);
     view.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
-      const p = (pickCache.picks || []).find(x => x.id === b.dataset.pick), o = b.dataset.o;
+      const p = (pickCache.picks || []).find(x => x.id === b.dataset.pick), o = b.dataset.o, market = b.dataset.m;
       if (!p) return;
-      openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o), league: p.league, fair: L.r2(p.fair_odds[o]), pickId: p.id, outcome: o, commence: p.commence_time, sport: '⚽' });
+      const mk = market === 'totals' ? p.totals : p, sp = sportOf(p.sport_key);
+      openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o), league: p.league, fair: L.r2(mk.fair_odds[o]), pickId: p.id, outcome: o,
+        commence: p.commence_time, sport: sportEmoji(p.sport_key), market, point: market === 'totals' ? p.totals.point : null,
+        type: market === 'totals' ? 'Goles' : sp === 'soccer' ? '1X2' : 'Ganador' });
     });
   }
 
@@ -687,15 +711,19 @@
         <div class="grow"><label style="margin-top:0">MENSUAL €</label><input id="lm" inputmode="decimal" value="${st.lossMonth ? fnum(st.lossMonth) : ''}" placeholder="Sin límite"></div></div>
         <div class="muted" style="margin-top:6px">SI LO SUPERAS, INICIO MUESTRA UN AVISO EN ROJO. SEMANA = LUNES A DOMINGO.</div></div>
       <h2>ESCÁNER DE PICKS</h2>
-      <div class="card"><label style="margin-top:0">LIGAS (TOCA PARA ACTIVAR / DESACTIVAR)</label>
-        <div class="chips">${(st.scan || []).map((l, i) => `<button data-scan="${i}" class="${l.on ? 'on' : ''}">${esc(l.name)}</button>`).join('')}</div>
-        <details style="margin-top:8px"><summary class="muted">AÑADIR O QUITAR UNA LIGA</summary>
-          <div class="row" style="margin-top:6px"><input id="scName" placeholder="Nombre" style="flex:1"><input id="scKey" placeholder="soccer_…" style="flex:1.4"></div>
-          <div class="row" style="margin-top:6px"><button class="small" id="scAdd">AÑADIR</button><select id="scDel" style="flex:1"><option value="">Quitar…</option>${(st.scan || []).map((l, i) => `<option value="${i}">${esc(l.name)} · ${esc(l.key)}</option>`).join('')}</select></div>
-        </details>
+      <div class="card"><label style="margin-top:0">LIGAS · ✓ = SE BUSCA · ⭐ = ENTRA EN EL ENVÍO DIARIO</label>
+        ${(st.scan || []).map((l, i) => `<div class="lg">
+          <button class="chk${l.on ? ' on' : ''}" data-son="${i}" aria-label="Activar">${l.on ? '✓' : ''}</button>
+          <span class="grow ellipsis${l.on ? '' : ' muted'}">${sportEmoji(l.key)} ${esc(l.name)}</span>
+          <button class="star${l.fav ? ' on' : ''}" data-sfav="${i}" aria-label="Favorita">⭐</button>
+          <button class="rm" data-srm="${i}" aria-label="Quitar">×</button></div>`).join('') || '<div class="muted">SIN LIGAS</div>'}
+        <button class="block" id="addLeague" style="margin-top:8px">+ AÑADIR LIGA O DEPORTE</button>
+        <div class="muted" style="margin-top:8px">${scanBudget(st)}</div>
+        <label>MÁS/MENOS GOLES EN BÚSQUEDAS MANUALES</label>
+        <div class="seg"><button data-tot="on" class="${st.totals !== false ? 'on' : ''}">CON MÁS/MENOS</button><button data-tot="off" class="${st.totals === false ? 'on' : ''}">SOLO GANADOR</button></div>
         <div class="row" style="margin-top:12px"><div class="grow"><label style="margin-top:0">UMBRAL DE VALOR %</label><input id="thr" inputmode="decimal" value="${fnum(st.threshold, st.threshold % 1 ? 1 : 0)}"></div>
           <div class="grow"><label style="margin-top:0">ENVÍO POR DEFECTO</label><div class="seg"><button data-sm="value" class="${st.sendMode === 'value' ? 'on' : ''}">SOLO ⭐</button><button data-sm="all" class="${st.sendMode === 'all' ? 'on' : ''}">TODOS</button></div></div></div>
-        <label>QUITAR EL MARGEN DE PINNACLE</label>
+        <label>QUITAR EL MARGEN (PINNACLE Y BETFAIR)</label>
         <div class="seg"><button data-dv="power" class="${st.devig !== 'mult' ? 'on' : ''}">POWER</button><button data-dv="mult" class="${st.devig === 'mult' ? 'on' : ''}">PROPORCIONAL</button></div>
         <div class="muted" style="margin-top:6px">PROPORCIONAL REPARTE EL MARGEN A PARTES IGUALES; POWER CARGA MÁS MARGEN A LOS NO FAVORITOS, QUE ES DONDE LAS CASAS LO PONEN DE VERDAD.</div></div>
       <h2>ENVÍO AUTOMÁTICO DIARIO</h2>
@@ -743,19 +771,15 @@
       b.onclick = add;
       input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
     });
-    view.querySelectorAll('[data-scan]').forEach(b => b.onclick = () => {
-      const scan = settings().scan.map(x => Object.assign({}, x)); const l = scan[+b.dataset.scan]; l.on = !l.on; saveSettings({ scan });
+    const editScan = (i, fn) => { const scan = settings().scan.map(x => Object.assign({}, x)); fn(scan[i], scan); saveSettings({ scan }); };
+    view.querySelectorAll('[data-son]').forEach(b => b.onclick = () => editScan(+b.dataset.son, l => { l.on = !l.on; if (!l.on) l.fav = false; }));
+    view.querySelectorAll('[data-sfav]').forEach(b => b.onclick = () => editScan(+b.dataset.sfav, l => { l.fav = !l.fav; if (l.fav) l.on = true; }));
+    view.querySelectorAll('[data-srm]').forEach(b => b.onclick = async () => {
+      const i = +b.dataset.srm, l = settings().scan[i];
+      if (await confirmDelete(`¿Quitar ${l.name} del escáner? Las apuestas y picks que ya tienes no cambian.`)) editScan(i, (x, scan) => scan.splice(i, 1));
     });
-    view.querySelector('#scAdd').onclick = () => {
-      const name = view.querySelector('#scName').value.trim(), key = view.querySelector('#scKey').value.trim();
-      if (!name || !/^[a-z0-9_]+$/.test(key)) { toast('Pon nombre y clave (ej. soccer_spain_la_liga)'); return; }
-      saveSettings({ scan: settings().scan.concat([{ name, key, on: true }]) });
-    };
-    view.querySelector('#scDel').onchange = async ev => {
-      const i = ev.target.value; if (i === '') return;
-      const scan = settings().scan.slice(), l = scan[+i];
-      if (await confirmDelete(`¿Quitar ${l.name} del escáner?`)) { scan.splice(+i, 1); saveSettings({ scan }); } else render();
-    };
+    view.querySelector('#addLeague').onclick = openLeaguePicker;
+    view.querySelectorAll('[data-tot]').forEach(b => b.onclick = () => saveSettings({ totals: b.dataset.tot === 'on' }));
     view.querySelector('#thr').onchange = ev => { const v = pnum(ev.target.value); if (!(v >= 0)) { toast('Número no válido'); render(); return; } saveSettings({ threshold: v }); toast('GUARDADO'); };
     view.querySelectorAll('[data-sm]').forEach(b => b.onclick = () => { saveSettings({ sendMode: b.dataset.sm }); picksMode = b.dataset.sm; });
     view.querySelectorAll('[data-dv]').forEach(b => b.onclick = () => saveSettings({ devig: b.dataset.dv }));
@@ -777,6 +801,51 @@
       if (!await ask(p ? `Hay ${p} cambio(s) sin subir que se perderán. ¿Cerrar sesión?` : '¿Cerrar sesión en este móvil? Los datos siguen en la nube.', { ok: 'CERRAR SESIÓN', danger: true })) return;
       S.logout(); render();
     };
+  }
+
+  // Estimación de créditos: solo gastan las ligas que tengan partidos en las próximas 72 h.
+  function scanBudget(st) {
+    const on = (st.scan || []).filter(l => l.on), fav = on.filter(l => l.fav);
+    const manual = on.reduce((n, l) => n + (st.totals !== false && sportOf(l.key) === 'soccer' ? 2 : 1), 0);
+    const daily = (fav.length ? fav : on).length;
+    return `BÚSQUEDA MANUAL: HASTA ${manual} CRÉDITO${manual === 1 ? '' : 'S'}. ENVÍO DIARIO: ${fav.length ? 'SOLO ⭐' : 'TODAS LAS ACTIVAS (MARCA ⭐ PARA AHORRAR)'}, HASTA ${daily}/DÍA ≈ ${daily * 30}/MES DE 500. SOLO GASTAN LAS LIGAS CON PARTIDOS EN 72 H.`;
+  }
+
+  // Selector con todas las competiciones de The Odds API (la lista no gasta créditos).
+  async function openLeaguePicker() {
+    const m = sheet(`<h3>+ AÑADIR LIGA O DEPORTE</h3><input id="lq" placeholder="Buscar (p. ej. Championship, NBA, ATP)…" autocomplete="off" style="margin-top:8px">
+      <div id="ll" class="muted" style="margin-top:8px">CARGANDO COMPETICIONES…</div><div class="actions"><button id="lclose">CERRAR</button></div>`);
+    m.querySelector('#lclose').onclick = closeSheet;
+    let info;
+    try {
+      const r = await S.callPicks({ action: 'status' });
+      if (r.error || !r.sportsInfo) { m.querySelector('#ll').innerHTML = `<span class="neg">⛔ ${esc(r.error ? errText(r.error) : 'NO SE PUDO LEER LA LISTA (REVISA ODDS_API_KEY)')}</span>`; return; }
+      info = r.sportsInfo;
+      if (r.credits) savePicks({ credits: r.credits });
+    } catch (e) { m.querySelector('#ll').innerHTML = '<span class="neg">⛔ SIN CONEXIÓN</span>'; return; }
+    const GROUP_ORDER = ['Soccer', 'Basketball', 'Tennis'];
+    const GROUP_ES = { Soccer: '⚽ FÚTBOL', Basketball: '🏀 BALONCESTO', Tennis: '🎾 TENIS' };
+    const rank = g => (GROUP_ORDER.indexOf(g) + 1) || 99;
+    const draw = () => {
+      const q = m.querySelector('#lq').value.trim().toLowerCase();
+      const have = new Set(settings().scan.map(l => l.key));
+      const rows = info.filter(x => !q || (x.title + ' ' + (x.description || '') + ' ' + x.key).toLowerCase().includes(q))
+        .sort((a, b) => rank(a.group) - rank(b.group) || a.group.localeCompare(b.group) || a.title.localeCompare(b.title));
+      let html = '', g = null;
+      rows.forEach(x => {
+        if (x.group !== g) { g = x.group; html += `<div class="datehdr">${esc(GROUP_ES[g] || '🏆 ' + g.toUpperCase())}</div>`; }
+        html += `<div class="lg"><span class="grow"><b>${esc(x.title)}</b><div class="muted">${esc(x.description || '')}</div></span>
+          ${have.has(x.key) ? '<span class="tag W">AÑADIDA</span>' : `<button class="small" data-add-key="${esc(x.key)}">AÑADIR</button>`}</div>`;
+      });
+      m.querySelector('#ll').innerHTML = html || 'NADA COINCIDE';
+      m.querySelectorAll('[data-add-key]').forEach(b => b.onclick = () => {
+        const x = info.find(i => i.key === b.dataset.addKey);
+        saveSettings({ scan: settings().scan.concat([{ name: x.title, key: x.key, on: true, fav: false }]) });
+        toast('AÑADIDA: ' + x.title); draw();
+      });
+    };
+    m.querySelector('#lq').oninput = draw;
+    draw();
   }
 
   async function checkConnection() {

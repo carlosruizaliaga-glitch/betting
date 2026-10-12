@@ -141,6 +141,13 @@
     .pk span { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
     .pk.fav { border-color: var(--cyan); } .pk.fav .o { color: var(--cyan); }
     .pk.val { border-color: var(--yellow); background: #ffd54f10; } .pk.val .o { color: var(--yellow); }
+    .lg { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line2); }
+    .lg:last-of-type { border-bottom: 0; }
+    .lg .chk { width: 30px; height: 30px; padding: 0; background: #000; font-weight: 800; }
+    .lg .chk.on { background: var(--pos); border-color: var(--pos); color: #000; }
+    .lg .star { width: 34px; height: 30px; padding: 0; background: #000; filter: grayscale(1); opacity: .35; }
+    .lg .star.on { filter: none; opacity: 1; border-color: var(--yellow); }
+    .lg .rm { width: 30px; height: 30px; padding: 0; color: var(--neg); background: none; }
     body.noapp header, body.noapp nav.tabs, body.noapp .fab { display: none; }
   </style>
 </head>
