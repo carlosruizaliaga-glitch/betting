@@ -164,6 +164,28 @@
     return { n: v.length, avg: v.length ? v.reduce((s, b) => s + b.clv, 0) / v.length : null, pos: v.length ? v.filter(b => b.clv > 0).length / v.length : null };
   }
 
+  // CLV agrupado (por liga, mercado…): n, CLV medio, % positivas y resultado económico de esas apuestas.
+  function clvBy(bets, keyFn, order) {
+    const g = {};
+    bets.filter(b => typeof b.clv === 'number' && isFinite(b.clv)).forEach(b => { const k = keyFn(b) || '—'; (g[k] = g[k] || []).push(b); });
+    const row = k => {
+      const list = g[k] || [], s = summarize(list), c = clvStats(list);
+      return { key: k, n: list.length, avg: c.avg, pos: c.pos, profit: s.profit, yield: s.yield };
+    };
+    if (order) return order.map(row);
+    return Object.keys(g).map(row).sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
+  }
+
+  // Ventaja sobre la cuota justa en el momento de apostar (cuota / justa del pick − 1).
+  const edgeAtBet = b => b.fair > 1 && b.odds > 1 ? b.odds / b.fair - 1 : null;
+
+  // CLV medio acumulado apuesta a apuesta (en orden de fecha), para ver si converge por encima de +1 %.
+  function clvSeries(bets) {
+    let sum = 0, n = 0;
+    return bets.filter(b => typeof b.clv === 'number' && isFinite(b.clv)).sort(byTime)
+      .map(b => { sum += b.clv; n++; return { date: b.date, value: sum / n, n, bet: b }; });
+  }
+
   // Beneficio de la semana (lunes–domingo) y del mes en curso, para los límites de pérdida.
   function lossWindows(bets, today) {
     const ws = weekStart(today), m = today.slice(0, 7);
@@ -174,6 +196,7 @@
   }
 
   const L = { r2, RESULTS, isClosed, risk, payout, potential, profit, comboOdds, byTime, madridDate, addDays, weekStart,
-    funds, stakeFor, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows };
+    funds, stakeFor, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
+    clvBy, edgeAtBet, clvSeries };
   if (typeof module !== 'undefined') module.exports = L; else root.Logic = L;
 })(typeof window !== 'undefined' ? window : globalThis);

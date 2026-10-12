@@ -169,6 +169,46 @@ export function buildPicks(events, opts) {
   return out;
 }
 
+// ---------- Cierre automático con el marcador final ----------
+// Resultado de una apuesta: 'W', 'L', 'V' (nula), 'HW'/'HL' (medio ganada/perdida en líneas de cuarto).
+// market 'h2h': outcome '1'/'X'/'2'; market 'totals': outcome 'O'/'U' con su línea (point).
+export function settleOutcome(market, outcome, home, away, point) {
+  if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
+  if (market === 'totals') {
+    if (!Number.isFinite(point)) return null;
+    const total = home + away;
+    const one = line => total === line ? 'V' : (total > line) === (outcome === 'O') ? 'W' : 'L';
+    // Líneas de cuarto (2,25 / 2,75): media apuesta a cada línea vecina.
+    if (Math.abs(point * 4 % 2) === 1) {
+      const a = one(point - 0.25), b = one(point + 0.25);
+      if (a === b) return a;
+      const r = [a, b].sort().join('');
+      return r === 'VW' ? 'HW' : r === 'LV' ? 'HL' : null;
+    }
+    return one(point);
+  }
+  const res = home > away ? '1' : home < away ? '2' : 'X';
+  return res === outcome ? 'W' : 'L';
+}
+
+// Beneficio de una apuesta cerrada (mismas reglas que la app: pago redondeado a céntimos − riesgo).
+export function betProfit(result, stake, odds, bonus, cashout) {
+  const r2c = x => Math.round(Number((x * 100).toPrecision(12))) / 100;
+  const s = +stake || 0, o = +odds || 1, f = !!bonus;
+  const pay = result === 'W' ? (f ? s * (o - 1) : s * o) : result === 'V' ? (f ? 0 : s)
+    : result === 'HW' ? (f ? s * 0.5 * (o - 1) : s * 0.5 * (1 + o)) : result === 'HL' ? (f ? 0 : s * 0.5)
+    : result === 'CO' ? +cashout || 0 : 0;
+  return r2c(r2c(pay) - (f ? 0 : r2c(s)));
+}
+
+// Marcador de la respuesta de /scores: {home, away} o null si aún no ha terminado.
+export function finalScore(ev) {
+  if (!ev || !ev.completed || !Array.isArray(ev.scores)) return null;
+  const get = name => { const s = ev.scores.find(x => x.name === name); return s ? parseFloat(s.score) : NaN; };
+  const home = get(ev.home_team), away = get(ev.away_team);
+  return Number.isFinite(home) && Number.isFinite(away) ? { home, away } : null;
+}
+
 // Movimiento: cambio de probabilidad justa (en puntos) desde la primera captura.
 export const moveOf = (p, o) => p.first_fair_prob && p.first_fair_prob[o] != null && p.fair_prob[o] != null ? p.fair_prob[o] - p.first_fair_prob[o] : 0;
 

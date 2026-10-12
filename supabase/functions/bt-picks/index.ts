@@ -7,9 +7,9 @@
 //   picks        → picks guardados de las próximas horas (no gasta créditos)
 //   scan         → { mode: 'value'|'all', send: true, confirmLow: false }
 //                  (manual: ligas activas + Más/Menos en fútbol; auto: solo ligas ⭐ y solo ganador)
-// POST { action: 'cron', cronKey } (pg_cron cada 5 min): cuota de cierre, CLV y envío diario.
+// POST { action: 'cron', cronKey } (pg_cron cada 5 min): cuota de cierre, CLV, cierre automático y envío diario.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { BOOKS, buildPicks, formatMessages, pinnacleFair, clv, sportOf } from './picks.js';
+import { BOOKS, buildPicks, formatMessages, pinnacleFair, clv, sportOf, settleOutcome, betProfit, finalScore } from './picks.js';
 
 const ODDS = 'https://api.the-odds-api.com/v4';
 const CACHE_MIN = 30;
@@ -255,6 +255,76 @@ async function fillClv() {
   return n;
 }
 
+// Cierre automático: apuestas pendientes hechas desde picks cuyo partido ya debería haber terminado.
+// /scores con daysFrom cuesta 2 créditos por consulta: como mucho una por liga cada 30 min y 8 intentos por partido.
+const SETTLE_AFTER_MIN: Record<string, number> = { soccer: 115, basketball: 150, tennis: 90 };
+const SETTLE_EVERY_MIN = 30, SETTLE_MAX_TRIES = 8;
+const RESULT_ES: Record<string, string> = { W: '✅ GANADA', L: '❌ PERDIDA', V: '➖ NULA', HW: '✅ MEDIO GANADA', HL: '❌ MEDIO PERDIDA' };
+const eur = (x: number) => (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(2).replace('.', ',') + ' €';
+
+async function autoSettle(now: Date) {
+  const { data: row } = await db.from('bt_items').select('data').eq('id', 'settings').maybeSingle();
+  const st = (row && row.data) || {};
+  if (st.autoSettle === false || !env('ODDS_API_KEY')) return null;
+  const pend = (await pickBets()).filter((r: any) => r.data.result === 'P' && r.data.pickOutcome && r.data.commence);
+  if (!pend.length) return null;
+  const { data: picks } = await db.from('bt_picks').select('id,sport_key,home,away').in('id', [...new Set(pend.map((r: any) => r.data.pickId))]);
+  const pickMap = new Map((picks || []).map((p: any) => [p.id, p]));
+  const { data: stRow } = await db.from('bt_state').select('data').eq('key', 'settle').maybeSingle();
+  const state = (stRow && stRow.data) || { last: {}, tries: {} };
+  state.last = state.last || {}; state.tries = state.tries || {};
+
+  // Partidos que ya deberían haber terminado, agrupados por liga.
+  const bySport = new Map();
+  for (const r of pend) {
+    const p: any = pickMap.get(r.data.pickId);
+    if (!p) continue;
+    const mins = (now.getTime() - new Date(r.data.commence).getTime()) / MIN;
+    if (mins < (SETTLE_AFTER_MIN[sportOf(p.sport_key)] || 120) || mins > 3 * 24 * 60) continue;
+    if ((state.tries[p.id] || 0) >= SETTLE_MAX_TRIES) continue;
+    if (!bySport.has(p.sport_key)) bySport.set(p.sport_key, []);
+    bySport.get(p.sport_key).push(r);
+  }
+  let calls = 0;
+  const done: string[] = [];
+  for (const [sportKey, rows] of bySport) {
+    const last = state.last[sportKey];
+    if (last && now.getTime() - new Date(last).getTime() < SETTLE_EVERY_MIN * MIN) continue;
+    const ids = [...new Set(rows.map((r: any) => r.data.pickId))];
+    const res = await oddsGet(`/sports/${sportKey}/scores`, { daysFrom: '3', eventIds: ids.join(','), dateFormat: 'iso' });
+    calls++;
+    state.last[sportKey] = now.toISOString();
+    if (!res.ok || !Array.isArray(res.data)) continue;
+    const evMap = new Map(res.data.map((e: any) => [e.id, e]));
+    for (const id of ids) {
+      const ev: any = evMap.get(id), fs = finalScore(ev);
+      if (!fs) { state.tries[id] = (state.tries[id] || 0) + 1; continue; }
+      delete state.tries[id];
+      for (const r of rows.filter((x: any) => x.data.pickId === id)) {
+        const d = r.data, market = d.pickMarket === 'totals' ? 'totals' : 'h2h';
+        const result = settleOutcome(market, d.pickOutcome, fs.home, fs.away, d.point != null ? +d.point : NaN);
+        if (!result) continue;
+        const data = { ...d, result, closedAt: now.getTime(), autoSettled: true, score: `${fs.home}-${fs.away}` };
+        const { error } = await db.from('bt_items').update({ data, updated_at: Math.max(Date.now(), r.updated_at + 1), server_ts: new Date().toISOString() })
+          .eq('id', r.id).eq('updated_at', r.updated_at);
+        if (error) continue;
+        const sel = (d.legs && d.legs[0] && d.legs[0].sel) || '', ev2 = (d.legs && d.legs[0] && d.legs[0].event) || '';
+        done.push(`${RESULT_ES[result] || result} · ${sel}${ev2 ? ` (${ev2} · ${fs.home}-${fs.away})` : ''} · ${eur(betProfit(result, d.stake, d.odds, d.bonus))}`);
+      }
+    }
+  }
+  if (calls) {
+    await db.from('bt_state').upsert({ key: 'settle', data: state, updated_at: now.toISOString() });
+    await saveCredits();
+  }
+  if (done.length && st.settleNotify !== false && env('TELEGRAM_BOT_TOKEN') && env('TELEGRAM_CHAT_ID')) {
+    const esc = (x: string) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    await telegram('sendMessage', { chat_id: env('TELEGRAM_CHAT_ID'), parse_mode: 'HTML',
+      text: `<b>🧾 APUESTAS CERRADAS AUTOMÁTICAMENTE</b>\n${done.map(esc).join('\n')}\n\nSi algo no cuadra, cámbialo en la app.` });
+  }
+  return { calls, settled: done.length };
+}
+
 // Envío diario: una vez al día, en la hora siguiente a la elegida (hora de Madrid).
 async function autoSend(now: Date) {
   const { data: row } = await db.from('bt_items').select('data').eq('id', 'settings').maybeSingle();
@@ -286,7 +356,7 @@ Deno.serve(async req => {
     if (!k || !body.cronKey || body.cronKey !== k.data.key) return json({ error: 'bad_cron' }, 401);
     try {
       const now = new Date();
-      return json({ ok: true, closing: await captureClosing(now), clv: await fillClv(), auto: await autoSend(now) });
+      return json({ ok: true, closing: await captureClosing(now), clv: await fillClv(), settle: await autoSettle(now), auto: await autoSend(now) });
     } catch (e) {
       console.error(e);
       return json({ error: 'server', message: String((e && (e as Error).message) || e) }, 500);

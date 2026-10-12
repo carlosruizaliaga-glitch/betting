@@ -1,5 +1,5 @@
 // Service worker: guarda la app en caché para que funcione sin conexión.
-const CACHE = 'betting-v6';
+const CACHE = 'betting-v7';
 const FILES = ['./', 'index.html', 'app.js', 'logic.js', 'store.js', 'manifest.webmanifest', 'favicon.png', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 const FONTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -22,8 +22,10 @@ self.addEventListener('fetch', e => {
   }
   if (url.origin !== location.origin) return;
   // Red primero (para recibir actualizaciones), caché si no hay conexión.
+  // 'no-cache' obliga al navegador a comprobar con el servidor: así nunca se mezclan archivos de versiones distintas.
+  const req = e.request.mode === 'navigate' ? e.request : new Request(e.request, { cache: 'no-cache' });
   e.respondWith(
-    fetch(e.request).then(res => {
+    fetch(req).then(res => {
       const copy = res.clone();
       caches.open(CACHE).then(c => c.put(e.request, copy));
       return res;
