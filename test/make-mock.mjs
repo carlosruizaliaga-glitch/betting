@@ -3,13 +3,15 @@
 import fs from 'fs';
 import { buildPicks } from '../supabase/functions/bt-picks/picks.js';
 
-const day = (d, h) => `2026-10-${String(d).padStart(2, '0')}T${h}:00Z`;
+// Fechas relativas a hoy: day(13) = mañana, day(14) = pasado mañana (así la simulación no caduca).
+const today0 = new Date();
+const day = (d, h) => new Date(Date.UTC(today0.getUTCFullYear(), today0.getUTCMonth(), today0.getUTCDate() + d - 12, +h.slice(0, 2), +h.slice(3, 5))).toISOString().replace('.000Z', 'Z');
 const h2h = (key, h, a, o) => ({ key, markets: [{ key: 'h2h', outcomes: o.length === 3
   ? [{ name: h, price: o[0] }, { name: 'Draw', price: o[1] }, { name: a, price: o[2] }]
   : [{ name: h, price: o[0] }, { name: a, price: o[1] }] }] });
 const withTot = (b, point, over, under) => ({ ...b, markets: b.markets.concat([{ key: 'totals', outcomes: [{ name: 'Over', price: over, point }, { name: 'Under', price: under, point }] }]) });
 const ev = (id, h, a, t, books) => ({ id, home_team: h, away_team: a, commence_time: t, bookmakers: books });
-const now = new Date('2026-10-12T08:00:00Z');
+const now = new Date();
 
 const laliga = buildPicks([
   ev('e1', 'Equipo Rojo', 'Equipo Azul', day(13, '16:30'), [withTot(h2h('pinnacle', 'Equipo Rojo', 'Equipo Azul', [2.15, 3.55, 3.45]), 2.5, 1.95, 1.95),
