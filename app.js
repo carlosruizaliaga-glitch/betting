@@ -86,8 +86,31 @@
   const filters = { book: '', sport: '', type: '', tipster: '', league: '', result: '' };
   let statsPeriod = 'TOTAL', statsBy = 'sport';
   const view = document.getElementById('view');
-  function go(t) { tab = t; render(); window.scrollTo(0, 0); }
+  // Pantallas visitadas, para el gesto/botón "atrás" del móvil.
+  const tabStack = [];
+  function go(t) {
+    if (t !== tab) { tabStack.push(tab); if (tabStack.length > 30) tabStack.shift(); }
+    tab = t; render(); window.scrollTo(0, 0);
+  }
   document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
+
+  // ---------- Atrás (gesto o botón del móvil) ----------
+  // Se mantiene una entrada "de guarda" en el historial: al ir atrás el navegador la quita, la volvemos a poner
+  // y la app decide qué hacer: cerrar el diálogo o la ventana abierta → pantalla anterior → INICIO. Nunca se cierra.
+  const armBack = () => { if (!history.state || history.state.bt !== 'guard') history.pushState({ bt: 'guard' }, ''); };
+  history.replaceState({ bt: 'base' }, '');
+  armBack();
+  // Chrome ignora al ir atrás las entradas creadas sin que el usuario haya tocado la página: se rearma al tocar.
+  document.addEventListener('pointerdown', armBack, { passive: true });
+  window.addEventListener('popstate', () => { armBack(); handleBack(); });
+  function handleBack() {
+    const dlg = document.querySelector('.overlay.dialog');
+    if (dlg) { const no = dlg.querySelector('[data-no]'); if (no) no.click(); else dlg.click(); return; }
+    if (sheetEl) { closeSheet(); return; }
+    while (tabStack.length && tabStack[tabStack.length - 1] === tab) tabStack.pop();
+    if (tabStack.length) { tab = tabStack.pop(); render(); window.scrollTo(0, 0); return; }
+    if (tab !== 'home') { tab = 'home'; render(); window.scrollTo(0, 0); }
+  }
   document.getElementById('fab').addEventListener('click', () => openBet());
   document.getElementById('syncBtn').addEventListener('click', () => { S.syncNow(); toast('Sincronizando…'); });
 
