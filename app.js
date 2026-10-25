@@ -305,7 +305,7 @@
     const axisLines = refs.length ? refs.map(r => hline(r.v, r.col || 'var(--line)', r.label, r.col)).join('')
       : hline(hi, 'var(--line)', opts.axis(hi)) + hline(lo, 'var(--line)', opts.axis(lo));
     return `<div class="chart" data-chart="${opts.id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label)}">
-      <defs><linearGradient id="gA-${opts.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00e676" stop-opacity=".22"/><stop offset="1" stop-color="#00e676" stop-opacity="0"/></linearGradient></defs>
+      <defs><linearGradient id="gA-${opts.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fcf98" stop-opacity=".22"/><stop offset="1" stop-color="#5fcf98" stop-opacity="0"/></linearGradient></defs>
       ${axisLines}
       ${opts.area ? `<path d="${d} L${last.x.toFixed(1)} ${H - pb} L${pl} ${H - pb} Z" fill="url(#gA-${opts.id})"/>` : ''}
       <path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>
@@ -654,7 +654,7 @@
       <div class="row"><div class="grow num">${creditsHtml(pickCache.credits)}</div>
         ${ls ? `<span class="muted">${fdate(L.madridDate(new Date(ls.at))).slice(0, 5)} ${new Date(ls.at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</span>` : ''}</div>
       <div class="row" style="margin-top:8px;gap:6px">
-        <button class="primary grow" id="scanSend" style="padding:13px 6px" ${picksBusy ? 'disabled' : ''}>${picksBusy ? '…' : '⚡ PICKS → TELEGRAM'}</button>
+        <button class="primary grow" id="scanSend" style="padding:13px 6px" ${picksBusy ? 'disabled' : ''}>${picksBusy ? '…' : '🔥 PICKS → TELEGRAM'}</button>
         <button id="scanOnly" style="padding:13px 10px" ${picksBusy ? 'disabled' : ''}>BUSCAR</button></div>
       ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
     </div>
@@ -849,6 +849,8 @@
   function saveSettings(patch) { S.put('settings', Object.assign(settings(), patch)); }
   function renderSettings() {
     const st = settings();
+    // Una sola comprobación automática al abrir Ajustes; el botón la repite cuando quieras.
+    if (!upd.autoDone) { upd.autoDone = true; checkUpd().then(() => { if (tab === 'settings') render(); }); }
     const st2 = S.status();
     view.innerHTML = `
       <h2>STAKE</h2>
@@ -897,6 +899,11 @@
         <button class="small" id="csvBets">APUESTAS (EXCEL/CSV)</button><button class="small" id="csvMoves">CAJA (EXCEL/CSV)</button>
         <button class="small" id="json">COPIA COMPLETA</button><button class="small" id="imp">IMPORTAR COPIA</button>
         <input type="file" id="impFile" accept="application/json,.json" style="display:none"></div></div>
+      <h2>LA APP</h2>
+      <div class="card"><div class="kv"><span>VERSIÓN</span><span class="num">${esc(window.APP_VERSION || '—')}</span></div>
+        <div class="kv"><span>ÚLTIMA</span><span class="num">${upd.error ? '<span class="yellow">SIN CONEXIÓN</span>' : upd.latest ? esc(upd.latest) : '—'}</span></div>
+        <button class="block ${hasUpd() ? 'primary' : ''}" id="updBtn" style="margin-top:10px">${hasUpd() ? '⬇ ACTUALIZAR LA APP AHORA' : '↻ BUSCAR ACTUALIZACIÓN'}</button>
+        <div class="muted" style="margin-top:8px">ACTUALIZAR NO BORRA NADA: TUS DATOS ESTÁN EN LA NUBE Y EN ESTE MÓVIL.</div></div>
       <h2>SESIÓN</h2>
       <div class="card"><div class="muted">ESTADO: ${st2 === 'ok' ? '<span class="pos">SINCRONIZADO</span>' : esc(String(st2).toUpperCase())}${S.lastSync() ? ' · ÚLTIMA ' + new Date(S.lastSync()).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' }) : ''}</div>
         <button class="danger block" id="logout" style="margin-top:10px">CERRAR SESIÓN EN ESTE MÓVIL</button></div>
@@ -942,6 +949,13 @@
     view.querySelector('#autoTime').onchange = ev => {
       if (!/^\d{2}:\d{2}$/.test(ev.target.value)) { toast('Hora no válida'); return; }
       saveSettings({ autoSend: Object.assign({}, settings().autoSend, { time: ev.target.value }) }); toast('GUARDADO');
+    };
+    view.querySelector('#updBtn').onclick = async () => {
+      if (hasUpd()) return applyUpd();
+      view.querySelector('#updBtn').textContent = 'BUSCANDO…';
+      await checkUpd();
+      render();
+      toast(hasUpd() ? 'HAY UNA VERSIÓN NUEVA' : upd.error ? 'No se pudo comprobar: sin conexión' : 'YA TIENES LA ÚLTIMA VERSIÓN');
     };
     view.querySelector('#chk').onclick = checkConnection;
     view.querySelector('#chat').onclick = detectChat;
@@ -1001,6 +1015,33 @@
     };
     m.querySelector('#lq').oninput = draw;
     draw();
+  }
+
+  // ---------- Actualizaciones (como en cartera): version.json frente a la versión instalada ----------
+  const upd = { latest: null, error: false, busy: false, autoDone: false };
+  const hasUpd = () => !!upd.latest && upd.latest !== window.APP_VERSION;
+  async function checkUpd() {
+    if (upd.busy) return;
+    upd.busy = true; upd.error = false;
+    try {
+      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      upd.latest = (await r.json()).v;
+    } catch (e) { upd.error = true; }
+    upd.busy = false;
+  }
+  // Borra la copia guardada de la app y la vuelve a bajar. Los datos (nube y móvil) no se tocan.
+  async function applyUpd() {
+    toast('ACTUALIZANDO…');
+    try {
+      await Promise.all((window.APP_FILES || []).map(f => fetch(f + (f === './' ? '' : '?u=' + Date.now()), { cache: 'reload' }).catch(() => null)));
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+      if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); }
+    } catch (e) { /* seguimos igualmente con la recarga */ }
+    location.href = location.pathname + '?v=' + Date.now();
   }
 
   async function checkConnection() {

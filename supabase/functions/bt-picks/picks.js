@@ -272,7 +272,7 @@ export function formatMessages(picks, { mode = 'value', threshold = 3, method = 
   const list = picks.filter(p => mode === 'all' || hasValue(p))
     .sort((a, b) => a.league.localeCompare(b.league) || a.commence_time.localeCompare(b.commence_time));
   const n = analyzed != null ? analyzed : picks.length;
-  const head = `<b>⚡ PICKS · PRECIO JUSTO SIN MARGEN</b>\n` +
+  const head = `<b>🔥 PICKS · PRECIO JUSTO SIN MARGEN</b>\n` +
     `${mode === 'all' ? 'Todos los partidos' : `Solo ⭐ valor ≥ +${dec(threshold, threshold % 1 ? 1 : 0)}%`} · ${list.length}/${n} · 72 h · ${method === 'mult' ? 'proporcional' : 'power'}`;
   if (!list.length) return [head + `\n\nSin partidos ${mode === 'all' ? '' : 'con valor '}en las próximas 72 h.`];
   const blocks = [];
