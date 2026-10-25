@@ -52,7 +52,13 @@
         <div class="actions">${opts.cancel ? `<button data-no>${esc(opts.cancel)}</button>` : ''}
         <button data-yes class="${opts.danger ? 'danger' : 'primary'}">${esc(opts.ok)}</button></div></div>`;
       document.body.appendChild(root);
-      const done = v => { root.remove(); resolve(v); };
+      navPush(Object.assign(navState(!!sheetEl), { dialog: true }));
+      const done = (v, fromHistory) => {
+        if (!root.isConnected) return;
+        root.remove(); resolve(v);
+        if (!fromHistory) navBack();
+      };
+      root._cancel = () => done(false, true);
       root.querySelector('[data-yes]').onclick = () => done(true);
       const no = root.querySelector('[data-no]');
       if (no) no.onclick = () => done(false);
@@ -63,9 +69,11 @@
   const notify = msg => ask(msg, { cancel: null });
 
   // ---------- Hoja modal ----------
+  // Cada hoja abierta es una entrada del historial: el gesto "atrás" del móvil la cierra.
   let sheetEl = null;
   function sheet(html) {
-    closeSheet();
+    const reuse = !!sheetEl;
+    if (sheetEl) sheetEl.remove();
     const ov = document.createElement('div');
     ov.className = 'overlay';
     ov.innerHTML = `<div class="sheet" role="dialog">${html}</div>`;
@@ -73,12 +81,15 @@
     document.body.appendChild(ov);
     document.body.style.overflow = 'hidden';
     sheetEl = ov;
+    if (!reuse) navPush(navState(true));
     return ov.querySelector('.sheet');
   }
-  function closeSheet() {
-    if (sheetEl) sheetEl.remove();
+  function closeSheet(fromHistory) {
+    if (!sheetEl) return;
+    sheetEl.remove();
     sheetEl = null;
     document.body.style.overflow = '';
+    if (fromHistory !== true) navBack();   // (los botones pasan el evento del clic: solo cuenta el true del gesto atrás)
   }
 
   // ---------- Navegación y cabecera ----------
@@ -86,31 +97,44 @@
   const filters = { book: '', sport: '', type: '', tipster: '', league: '', result: '' };
   let statsPeriod = 'TOTAL', statsBy = 'sport';
   const view = document.getElementById('view');
-  // Pantallas visitadas, para el gesto/botón "atrás" del móvil.
-  const tabStack = [];
+  // ---------- Atrás (gesto o botón del móvil) ----------
+  // Cada pantalla, hoja y diálogo es una entrada del historial: al ir atrás el móvil anima directamente
+  // a lo anterior (cerrar la ventana → pantalla anterior). Debajo de todo hay una entrada de INICIO
+  // que, al alcanzarla, se vuelve a poner: así la app nunca se cierra con el gesto.
+  function navState(sheetOpen) { return { bt: 1, tab, sheet: !!sheetOpen }; }
+  // Cola de cambios del historial: los "atrás" que provoca la app al cerrar con un botón se agrupan en un solo
+  // history.go(-n) y las entradas nuevas esperan a que termine (el navegador cancela o junta los pasos si se solapan).
+  let backN = 0, awaitingPop = false, flushT = null;
+  const pendingPush = [];
+  function navPush(state) { if (backN || awaitingPop || flushT) { pendingPush.push(state); scheduleNav(); } else history.pushState(state, ''); }
+  function navBack() { if (pendingPush.length) { pendingPush.pop(); return; } backN++; scheduleNav(); }
+  function scheduleNav() { if (!flushT && !awaitingPop) flushT = setTimeout(flushNav, 0); }
+  function flushNav() {
+    flushT = null;
+    if (awaitingPop) return;
+    if (backN) { const n = backN; backN = 0; awaitingPop = true; history.go(-n); return; }
+    while (pendingPush.length) history.pushState(pendingPush.shift(), '');
+  }
   function go(t) {
-    if (t !== tab) { tabStack.push(tab); if (tabStack.length > 30) tabStack.shift(); }
-    tab = t; render(); window.scrollTo(0, 0);
+    if (t === tab) { window.scrollTo(0, 0); return; }
+    tab = t;
+    navPush(navState(false));
+    render(); window.scrollTo(0, 0);
   }
   document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
-
-  // ---------- Atrás (gesto o botón del móvil) ----------
-  // Se mantiene una entrada "de guarda" en el historial: al ir atrás el navegador la quita, la volvemos a poner
-  // y la app decide qué hacer: cerrar el diálogo o la ventana abierta → pantalla anterior → INICIO. Nunca se cierra.
-  const armBack = () => { if (!history.state || history.state.bt !== 'guard') history.pushState({ bt: 'guard' }, ''); };
-  history.replaceState({ bt: 'base' }, '');
-  armBack();
-  // Chrome ignora al ir atrás las entradas creadas sin que el usuario haya tocado la página: se rearma al tocar.
-  document.addEventListener('pointerdown', armBack, { passive: true });
-  window.addEventListener('popstate', () => { armBack(); handleBack(); });
-  function handleBack() {
+  history.replaceState({ bt: 1, tab: 'home', guard: true }, '');
+  history.pushState({ bt: 1, tab: 'home' }, '');
+  window.addEventListener('popstate', ev => {
+    const st = ev.state || {};
+    if (awaitingPop) { awaitingPop = false; flushNav(); return; }
     const dlg = document.querySelector('.overlay.dialog');
-    if (dlg) { const no = dlg.querySelector('[data-no]'); if (no) no.click(); else dlg.click(); return; }
-    if (sheetEl) { closeSheet(); return; }
-    while (tabStack.length && tabStack[tabStack.length - 1] === tab) tabStack.pop();
-    if (tabStack.length) { tab = tabStack.pop(); render(); window.scrollTo(0, 0); return; }
-    if (tab !== 'home') { tab = 'home'; render(); window.scrollTo(0, 0); }
-  }
+    if (dlg && !st.dialog) { if (dlg._cancel) dlg._cancel(); else dlg.remove(); return; }
+    if (sheetEl && !st.sheet) closeSheet(true);
+    else if (!sheetEl && st.sheet) history.replaceState(Object.assign({}, st, { sheet: false }), '');
+    if (st.guard) history.pushState({ bt: 1, tab: 'home' }, '');
+    const t = st.tab || 'home';
+    if (t !== tab) { tab = t; render(); window.scrollTo(0, 0); }
+  });
   document.getElementById('fab').addEventListener('click', () => openBet());
   document.getElementById('syncBtn').addEventListener('click', () => { S.syncNow(); toast('Sincronizando…'); });
 
@@ -118,7 +142,8 @@
     const st = S.status(), pend = S.pending();
     const dot = document.getElementById('syncDot'), txt = document.getElementById('syncTxt');
     let c = '', t = '';
-    if (st === 'syncing') { c = 'warn'; t = 'SYNC…'; }
+    // La sincronización periódica (cada 20 s) es silenciosa: mientras dura se deja la cabecera como estaba.
+    if (st === 'syncing') { if (txt.textContent) return; t = '…'; }
     else if (st === 'bad_secret') { c = 'err'; t = 'CÓDIGO NO VÁLIDO'; }
     else if (st === 'offline') { c = 'warn'; t = pend ? `OFFLINE · ${pend} PEND.` : 'OFFLINE'; }
     else if (st === 'error') { c = 'err'; t = pend ? `ERROR · ${pend} PEND.` : 'ERROR DE RED'; }
@@ -131,7 +156,8 @@
   let lastVersion = -1;
   S.onChange(() => {
     renderHeader();
-    if (S.version() !== lastVersion) render();
+    // Llegan datos nuevos de la nube: se redibuja la pantalla sin mover el scroll.
+    if (S.version() !== lastVersion) { const y = window.scrollY; render(); window.scrollTo(0, y); }
   });
 
   function render() {
