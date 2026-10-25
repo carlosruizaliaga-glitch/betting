@@ -237,7 +237,7 @@
       <div class="card hero">
         <div class="lbl">BANK</div>
         <div class="big num">${eur(bank)}</div>
-        <div class="num"><span class="${cls(f.profit)}">${seur(f.profit)}</span> <span class="${cls(f.profit)}">(${spct(base ? f.profit / base : null)})</span></div>
+        <div><span class="chg ${cls(f.profit)}">${seur(f.profit)} · ${spct(base ? f.profit / base : null)}</span></div>
         <div class="muted num" style="margin-top:4px">DISPONIBLE ${eur(f.available)} · EN JUEGO ${eur(f.pendingRisk)}</div>
         <div class="kpis">
           <div><div class="k">YIELD</div><div class="v num ${cls(s.yield)}">${spct(s.yield)}</div></div>
@@ -313,7 +313,7 @@
       <text x="${pl}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit">${fdate(series[0].date)}</text>
       <text x="${W - pr}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit" text-anchor="end">${fdate(last.p.date)}</text>
       <line class="cx" y1="${pt}" y2="${H - pb}" stroke="var(--muted)" visibility="hidden"/>
-      <circle class="cd" r="5" fill="#000" stroke="${col}" stroke-width="2" visibility="hidden"/>
+      <circle class="cd" r="5" fill="var(--bg)" stroke="${col}" stroke-width="2" visibility="hidden"/>
       <rect x="0" y="0" width="${W}" height="${H}" fill="transparent"/>
     </svg><div class="tip"></div></div>`;
   }
