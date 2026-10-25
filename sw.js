@@ -1,6 +1,6 @@
 // Service worker: guarda la app en caché para que funcione sin conexión.
-const CACHE = 'betting-v14';
-const FILES = ['./', 'index.html', 'app.js', 'logic.js', 'store.js', 'manifest.webmanifest', 'favicon.png', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'betting-v15';
+const FILES = ['./', 'index.html', 'app.js', 'logic.js', 'store.js', 'version.js', 'manifest.webmanifest', 'favicon.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable.png'];
 const FONTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', e => {
@@ -21,6 +21,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (url.origin !== location.origin) return;
+  if (url.pathname.endsWith('/version.json')) return;   // la comprobación de versión siempre va directa a internet
   // Red primero (para recibir actualizaciones), caché si no hay conexión.
   // 'no-cache' obliga al navegador a comprobar con el servidor: así nunca se mezclan archivos de versiones distintas.
   const req = e.request.mode === 'navigate' ? e.request : new Request(e.request, { cache: 'no-cache' });

@@ -21,13 +21,13 @@
        JetBrains Mono para cifras y etiquetas; Inter para los textos. */
     :root {
       /* Fondo "verde tapete" (25/10/2026): casi negro con un toque de verde; tarjetas un escalón más claras. */
-      --bg: #06110a; --card: #0b1c12; --card2: #08160e; --raise: #10261a; --text: #cfe6d6; --muted: #7fa98a; --faint: #557a62;
+      --bg: #06110a; --card: #0b1c12; --card2: #08160e; --raise: #10261a; --text: #d4e8da; --muted: #7fa98a; --faint: #557a62;
       --line: #1d3d29; --line2: #132a1c;
-      --pos: #00e676; --pos-soft: rgba(0, 230, 118, .12); --money: #00c853; --money-dark: #003d1a;
-      --neg: #ff5252; --neg-soft: rgba(255, 82, 82, .12);
-      --cyan: #4dd0e1; --cyan-soft: rgba(77, 208, 225, .12);
-      --yellow: #ffd54f; --yellow-soft: rgba(255, 213, 79, .12);
-      --purple: #b388ff; --purple-soft: rgba(179, 136, 255, .12);
+      --pos: #5fcf98; --pos-soft: rgba(95, 207, 152, .13); --money: #5fcf98; --money-dark: #123524;
+      --neg: #ef7b73; --neg-soft: rgba(239, 123, 115, .13);
+      --cyan: #7cc6d1; --cyan-soft: rgba(124, 198, 209, .13);
+      --yellow: #e9c47a; --yellow-soft: rgba(233, 196, 122, .13);
+      --purple: #b9a6e6; --purple-soft: rgba(185, 166, 230, .13);
       --r: 16px; --r-sm: 12px; --r-xs: 9px;
       --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
       --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -211,14 +211,15 @@
   <main id="view"></main>
   <button class="fab" id="fab" aria-label="Nueva apuesta">+</button>
   <nav class="tabs">
-    <button data-tab="home" class="active"><span class="ic">◉</span>INICIO</button>
-    <button data-tab="bets"><span class="ic">≡</span>APUESTAS</button>
-    <button data-tab="picks"><span class="ic">⚡</span>PICKS</button>
-    <button data-tab="stats"><span class="ic">▲</span>STATS</button>
+    <button data-tab="home" class="active"><span class="ic">🏠</span>INICIO</button>
+    <button data-tab="bets"><span class="ic">⚡</span>APUESTAS</button>
+    <button data-tab="picks"><span class="ic">🔥</span>PICKS</button>
+    <button data-tab="stats"><span class="ic">📈</span>STATS</button>
     <button data-tab="settings"><span class="ic">⚙</span>AJUSTES</button>
   </nav>
-  <script src="logic.js?v=14"></script>
-  <script src="store.js?v=14"></script>
-  <script src="app.js?v=14"></script>
+  <script src="version.js?v=15"></script>
+  <script src="logic.js?v=15"></script>
+  <script src="store.js?v=15"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
