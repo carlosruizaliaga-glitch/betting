@@ -50,7 +50,8 @@
     remote.forEach(r => {
       const local = db.items[r.id];
       if (!local || r.updated_at >= local.updated_at) {
-        if (!local || JSON.stringify(local) !== JSON.stringify(r)) changed = true;
+        // Solo cuenta como cambio si es otra versión (no por el orden de los campos que devuelve el servidor).
+        if (!local || r.updated_at !== local.updated_at || !!r.deleted !== !!local.deleted) changed = true;
         db.items[r.id] = r;
         if (db.outbox[r.id] && db.outbox[r.id] <= r.updated_at) delete db.outbox[r.id];
       }
