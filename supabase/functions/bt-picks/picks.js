@@ -156,7 +156,7 @@ export function derivedMarkets(prob) {
 
 // Más/Menos en las líneas pedidas y Ambos marcan, a partir de /events/{id}/odds con los mercados
 // 'btts' y 'alternate_totals' (bajo demanda: 1 crédito por mercado).
-export function buildExtras(ev, method, threshold, wanted = [1.5, 3.5]) {
+export function buildExtras(ev, method, threshold, wanted = [0.5, 1.5, 3.5]) {
   const keys = ['totals', 'alternate_totals'];
   const pinL = totalsLines(bookOf(ev, 'pinnacle'), keys), bfL = totalsLines(bookOf(ev, 'betfair_ex_eu'), keys);
   const lines = [];

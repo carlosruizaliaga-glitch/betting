@@ -1,5 +1,5 @@
 // Service worker: guarda la app en caché para que funcione sin conexión.
-const CACHE = 'betting-v19';
+const CACHE = 'betting-v20';
 const FILES = ['./', 'index.html', 'app.js', 'logic.js', 'store.js', 'version.js', 'manifest.webmanifest', 'favicon.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable.png'];
 const FONTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
