@@ -17,7 +17,7 @@ const COMMISSION = { betfair_ex_eu: 0.05, matchbook: 0.02 };
 const EXCHANGE_MAX_OVERROUND = 1.06;
 
 export const OUTCOMES = ['1', 'X', '2'];
-const ORDER = ['1', 'X', '2', 'O', 'U'];
+const ORDER = ['1', 'X', '2', 'O', 'U', 'Y', 'N'];
 const sortKeys = keys => keys.slice().sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
 const r2 = x => Math.round(x * 100) / 100;
 export const sportOf = key => String(key || '').split('_')[0];
@@ -61,18 +61,32 @@ function h2h(bookmaker, ev) {
   return r['1'] && r['2'] ? r : null;
 }
 
-// Cuotas de Más/Menos por línea: {2.5: {O, U}, ...}
-function totalsLines(bookmaker) {
-  const m = bookmaker && market(bookmaker, 'totals');
-  if (!m) return {};
+// Cuotas de Más/Menos por línea: {2.5: {O, U}, ...}. Con 'alternate_totals' salen más líneas.
+function totalsLines(bookmaker, keys = ['totals']) {
+  if (!bookmaker) return {};
   const lines = {};
-  for (const o of m.outcomes || []) {
-    const k = o.name === 'Over' ? 'O' : o.name === 'Under' ? 'U' : null;
-    if (!k || !(+o.price > 1) || o.point == null) continue;
-    (lines[o.point] = lines[o.point] || {})[k] = +o.price;
+  for (const mk of keys) {
+    const m = market(bookmaker, mk);
+    for (const o of (m && m.outcomes) || []) {
+      const k = o.name === 'Over' ? 'O' : o.name === 'Under' ? 'U' : null;
+      if (!k || !(+o.price > 1) || o.point == null) continue;
+      (lines[o.point] = lines[o.point] || {})[k] = +o.price;
+    }
   }
   for (const p of Object.keys(lines)) if (!(lines[p].O && lines[p].U)) delete lines[p];
   return lines;
+}
+
+// Ambos marcan: {Y, N}
+function bttsOdds(bookmaker) {
+  const m = bookmaker && market(bookmaker, 'btts');
+  if (!m) return null;
+  const r = {};
+  for (const o of m.outcomes || []) {
+    const k = o.name === 'Yes' ? 'Y' : o.name === 'No' ? 'N' : null;
+    if (k && +o.price > 1) r[k] = +o.price;
+  }
+  return r.Y && r.N ? r : null;
 }
 
 const sameKeys = (a, b) => a && b && sortKeys(Object.keys(a)).join() === sortKeys(Object.keys(b)).join();
@@ -131,18 +145,65 @@ function buildTotals(ev, method, threshold) {
   return { point, pin_odds: pinL[point] || null, fair_prob: c.prob, fair_odds: fairOdds, fair_src: c.src, best, value_outcome: valueOf(best, threshold) };
 }
 
+// ---------- Mercados derivados del 1X2 (sin gastar créditos) ----------
+// Doble oportunidad (1X, 12, X2) y "empate no vale" (1, 2), a partir de la probabilidad justa del 1X2.
+export function derivedMarkets(prob) {
+  if (!prob || prob['1'] == null || prob.X == null || prob['2'] == null) return null;
+  const dc = { '1X': prob['1'] + prob.X, '12': prob['1'] + prob['2'], 'X2': prob.X + prob['2'] };
+  const dnb = { '1': prob['1'] / (prob['1'] + prob['2']), '2': prob['2'] / (prob['1'] + prob['2']) };
+  return { dc: { fair_prob: dc, fair_odds: toOdds(dc) }, dnb: { fair_prob: dnb, fair_odds: toOdds(dnb) } };
+}
+
+// Más/Menos en las líneas pedidas y Ambos marcan, a partir de /events/{id}/odds con los mercados
+// 'btts' y 'alternate_totals' (bajo demanda: 1 crédito por mercado).
+export function buildExtras(ev, method, threshold, wanted = [1.5, 3.5]) {
+  const keys = ['totals', 'alternate_totals'];
+  const pinL = totalsLines(bookOf(ev, 'pinnacle'), keys), bfL = totalsLines(bookOf(ev, 'betfair_ex_eu'), keys);
+  const lines = [];
+  for (const point of wanted) {
+    const c = consensus(pinL[point], bfL[point], method);
+    if (!c) continue;
+    const fairOdds = toOdds(c.prob), best = bestPrices(ev, b => totalsLines(b, keys)[point], fairOdds);
+    lines.push({ point, fair_prob: c.prob, fair_odds: fairOdds, fair_src: c.src, best, value_outcome: valueOf(best, threshold) });
+  }
+  let btts = null;
+  const c = consensus(bttsOdds(bookOf(ev, 'pinnacle')), bttsOdds(bookOf(ev, 'betfair_ex_eu')), method);
+  if (c) {
+    const fairOdds = toOdds(c.prob), best = bestPrices(ev, bttsOdds, fairOdds);
+    btts = { fair_prob: c.prob, fair_odds: fairOdds, fair_src: c.src, best, value_outcome: valueOf(best, threshold) };
+  }
+  return { btts, lines, at: new Date().toISOString() };
+}
+
 // Cuota de cierre de PINNACLE (el CLV se mide siempre contra Pinnacle, como hasta ahora).
 // Devuelve {pin_odds, fair_prob, fair_odds, devig, totals?} o null.
-export function pinnacleFair(ev, method, totalsPoint) {
+export function pinnacleFair(ev, method, totalsPoint, withBtts) {
   const pin = h2h(bookOf(ev, 'pinnacle'), ev);
   if (!pin) return null;
   const prob = devig(pin, method);
   const out = { pin_odds: pin, fair_prob: prob, fair_odds: toOdds(prob), devig: method };
   if (totalsPoint != null) {
-    const line = totalsLines(bookOf(ev, 'pinnacle'))[totalsPoint];
+    const line = totalsLines(bookOf(ev, 'pinnacle'), ['totals', 'alternate_totals'])[totalsPoint];
     if (line) { const tp = devig(line, method); out.totals = { point: totalsPoint, pin_odds: line, fair_prob: tp, fair_odds: toOdds(tp) }; }
   }
+  if (withBtts) {
+    const b = bttsOdds(bookOf(ev, 'pinnacle'));
+    if (b) { const bp = devig(b, method); out.btts = { pin_odds: b, fair_prob: bp, fair_odds: toOdds(bp) }; }
+  }
   return out;
+}
+
+// Cuota justa de cierre que corresponde a una apuesta (según su mercado), o null si no hay.
+export function closingFairFor(c, bet) {
+  if (!c || c.missed) return null;
+  const o = bet.pickOutcome;
+  if (bet.pickMarket === 'totals') return c.totals && +c.totals.point === +bet.point && c.totals.fair_odds ? c.totals.fair_odds[o] || null : null;
+  if (bet.pickMarket === 'btts') return c.btts && c.btts.fair_odds ? c.btts.fair_odds[o] || null : null;
+  if (bet.pickMarket === 'dc' || bet.pickMarket === 'dnb') {
+    const d = derivedMarkets(c.fair_prob);
+    return d && d[bet.pickMarket].fair_odds[o] || null;
+  }
+  return c.fair_odds ? c.fair_odds[o] || null : null;
 }
 
 // CLV = mi cuota / cuota justa de cierre − 1.
@@ -171,7 +232,8 @@ export function buildPicks(events, opts) {
 
 // ---------- Cierre automático con el marcador final ----------
 // Resultado de una apuesta: 'W', 'L', 'V' (nula), 'HW'/'HL' (medio ganada/perdida en líneas de cuarto).
-// market 'h2h': outcome '1'/'X'/'2'; market 'totals': outcome 'O'/'U' con su línea (point).
+// market 'h2h': '1'/'X'/'2'; 'totals': 'O'/'U' con su línea (point); 'btts': 'Y'/'N';
+// 'dc' (doble oportunidad): '1X'/'12'/'X2'; 'dnb' (empate no vale): '1'/'2' (empate = nula).
 export function settleOutcome(market, outcome, home, away, point) {
   if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
   if (market === 'totals') {
@@ -187,7 +249,10 @@ export function settleOutcome(market, outcome, home, away, point) {
     }
     return one(point);
   }
+  if (market === 'btts') return (home > 0 && away > 0) === (outcome === 'Y') ? 'W' : 'L';
   const res = home > away ? '1' : home < away ? '2' : 'X';
+  if (market === 'dc') return outcome.includes(res) ? 'W' : 'L';
+  if (market === 'dnb') return res === 'X' ? 'V' : res === outcome ? 'W' : 'L';
   return res === outcome ? 'W' : 'L';
 }
 
@@ -234,7 +299,10 @@ export function madrid(iso) {
 // Cuota mínima en otra casa (bet365) para superar el umbral de valor sobre la justa.
 export const minOdds = (fair, threshold) => Math.ceil(fair * (1 + threshold / 100) * 100 - 1e-9) / 100;
 const point = n => dec(n, n % 1 ? (n * 10 % 1 ? 2 : 1) : 0);
-export const outcomeName = (p, o) => o === '1' ? p.home : o === '2' ? p.away : o === 'X' ? 'Empate'
+export const outcomeName = (p, o, mkt) => mkt === 'dc' ? (o === '1X' ? `${p.home} o empate` : o === '12' ? `${p.home} o ${p.away}` : `${p.away} o empate`)
+  : mkt === 'dnb' ? `${o === '1' ? p.home : p.away} (empate nula)`
+  : mkt === 'btts' ? `Ambos marcan: ${o === 'Y' ? 'sí' : 'no'}`
+  : o === '1' ? p.home : o === '2' ? p.away : o === 'X' ? 'Empate'
   : o === 'O' ? `Más ${point(p.totals ? p.totals.point : 2.5)}` : o === 'U' ? `Menos ${point(p.totals ? p.totals.point : 2.5)}` : o;
 export const hasValue = p => !!(p.value_outcome || (p.totals && p.totals.value_outcome));
 

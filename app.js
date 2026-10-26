@@ -523,14 +523,40 @@
   const savePicks = patch => { Object.assign(pickCache, patch); try { localStorage.setItem(PK, JSON.stringify(pickCache)); } catch (e) { console.error(e); } };
   let picksMode = null, picksBusy = false, picksMsg = '', picksLoadedAt = 0;
   const ptxt = n => fnum(n, n % 1 ? (n * 10 % 1 ? 2 : 1) : 0);
-  const OUT_NAME = (p, o) => o === '1' ? p.home : o === '2' ? p.away : o === 'X' ? 'Empate'
-    : o === 'O' ? 'Más ' + ptxt(p.totals ? p.totals.point : 2.5) : o === 'U' ? 'Menos ' + ptxt(p.totals ? p.totals.point : 2.5) : o;
+  // Nombre completo de una selección según el mercado: h2h, totals (con su línea), dc, dnb o btts.
+  const OUT_NAME = (p, o, market, point) => market === 'dc' ? (o === '1X' ? `${p.home} o empate` : o === '12' ? `${p.home} o ${p.away}` : `${p.away} o empate`)
+    : market === 'dnb' ? `${o === '1' ? p.home : p.away} (empate nula)`
+    : market === 'btts' ? `Ambos marcan: ${o === 'Y' ? 'sí' : 'no'}`
+    : o === '1' ? p.home : o === '2' ? p.away : o === 'X' ? 'Empate'
+    : o === 'O' ? 'Más ' + ptxt(point != null ? point : p.totals ? p.totals.point : 2.5)
+    : o === 'U' ? 'Menos ' + ptxt(point != null ? point : p.totals ? p.totals.point : 2.5) : o;
+  // Doble oportunidad y empate no vale, calculados a partir de la probabilidad justa del 1X2 (no gastan créditos).
+  const toOddsMap = pr => Object.fromEntries(Object.keys(pr).map(k => [k, 1 / pr[k]]));
+  const deriveMk = prob => {
+    if (!prob || prob['1'] == null || prob.X == null || prob['2'] == null) return null;
+    const dc = { '1X': prob['1'] + prob.X, '12': prob['1'] + prob['2'], 'X2': prob.X + prob['2'] };
+    const nb = prob['1'] + prob['2'], dnb = { '1': prob['1'] / nb, '2': prob['2'] / nb };
+    return { dc: { fair_prob: dc, fair_odds: toOddsMap(dc) }, dnb: { fair_prob: dnb, fair_odds: toOddsMap(dnb) } };
+  };
+  const mkFor = (p, market, pt) => market === 'h2h' ? p
+    : market === 'totals' ? (p.totals && +p.totals.point === +pt ? p.totals : ((p.extras && p.extras.lines) || []).find(l => +l.point === +pt))
+    : market === 'btts' ? (p.extras && p.extras.btts) : (deriveMk(p.fair_prob) || {})[market];
   const OUT_ORDER = ['1', 'X', '2'];
   const outKeys = prob => OUT_ORDER.filter(o => prob && prob[o] != null);
   const SPORT_EMOJI = { soccer: '⚽', basketball: '🏀', tennis: '🎾' };
   const sportOf = key => String(key || '').split('_')[0];
   const sportEmoji = key => SPORT_EMOJI[sportOf(key)] || '🏆';
-  const pickHasValue = p => !!(p.value_outcome || (p.totals && p.totals.value_outcome));
+  // Selecciones con valor del partido (cualquier mercado con precios de casas), de mayor a menor ventaja.
+  const valueList = p => {
+    const out = [];
+    const add = (mk, market, point) => {
+      if (mk && mk.value_outcome && mk.best && mk.best[mk.value_outcome]) out.push({ label: OUT_NAME(p, mk.value_outcome, market, point), edge: mk.best[mk.value_outcome].edge });
+    };
+    add(p, 'h2h'); add(p.totals, 'totals', p.totals && p.totals.point);
+    if (p.extras) { add(p.extras.btts, 'btts'); (p.extras.lines || []).forEach(l => add(l, 'totals', l.point)); }
+    return out.sort((a, b) => b.edge - a.edge);
+  };
+  const pickHasValue = p => valueList(p).length > 0;
   const minB365 = (fair, thr) => Math.ceil(fair * (1 + thr / 100) * 100 - 1e-9) / 100;
   // Cambio de probabilidad justa (en puntos) desde la primera captura del partido.
   const moveOf = (p, o) => p.first_fair_prob && p.first_fair_prob[o] != null && p.fair_prob[o] != null ? p.fair_prob[o] - p.first_fair_prob[o] : 0;
@@ -595,23 +621,24 @@
   // Mayor ventaja del partido sobre la cuota justa (en cualquier mercado), para ordenar por valor.
   const bestEdge = p => {
     const edges = [];
-    [p, p.totals].forEach(mk => { if (mk && mk.best) Object.values(mk.best).forEach(b => edges.push(b.edge)); });
+    [p, p.totals, p.extras && p.extras.btts].concat((p.extras && p.extras.lines) || []).forEach(mk => { if (mk && mk.best) Object.values(mk.best).forEach(b => edges.push(b.edge)); });
     return edges.length ? Math.max(...edges) : -1;
-  };
-  const valueEdge = p => {
-    const e = [];
-    if (p.value_outcome && p.best[p.value_outcome]) e.push(p.best[p.value_outcome].edge);
-    if (p.totals && p.totals.value_outcome && p.totals.best[p.totals.value_outcome]) e.push(p.totals.best[p.totals.value_outcome].edge);
-    return e.length ? Math.max(...e) : null;
   };
 
   // Casillas de un mercado. compact = fila corta (resultado, %, cuota mínima de bet365); si no, detalle con la mejor casa.
+  // Etiqueta corta de la casilla (el nombre completo sale al apuntar).
+  const cellLabel = (p, market, o, point) => market === 'h2h' ? (o === 'X' ? 'EMPATE' : (o === '1' ? p.home : p.away).toUpperCase())
+    : market === 'dc' ? (o === '1X' ? p.home.toUpperCase() + ' O X' : o === '12' ? 'CUALQUIERA' : 'X O ' + p.away.toUpperCase())
+    : market === 'dnb' ? (o === '1' ? p.home : p.away).toUpperCase()
+    : market === 'btts' ? (o === 'Y' ? 'SÍ' : 'NO') : OUT_NAME(p, o, market, point).toUpperCase();
+  const MK_KEYS = { totals: ['O', 'U'], btts: ['Y', 'N'], dc: ['1X', '12', 'X2'], dnb: ['1', '2'] };
+
   function pickCells(p, mk, market, thr, compact) {
-    const keys = market === 'totals' ? ['O', 'U'] : outKeys(mk.fair_prob);
+    const keys = MK_KEYS[market] || outKeys(mk.fair_prob), pt = mk.point != null ? mk.point : null;
     return `<div class="${compact ? 'pkrow' : 'pickrow'}" style="grid-template-columns:repeat(${keys.length},1fr)">${keys.map(o => {
       const b = mk.best && mk.best[o], isVal = mk.value_outcome === o, isFav = market === 'h2h' && p.favorite === o;
-      const label = market === 'totals' ? OUT_NAME(p, o).toUpperCase() : o;
-      const attrs = `data-pick="${esc(p.id)}" data-o="${o}" data-m="${market}"`;
+      const label = cellLabel(p, market, o, pt);
+      const attrs = `data-pick="${esc(p.id)}" data-o="${o}" data-m="${market}"${pt != null ? ` data-pt="${pt}"` : ''}`;
       if (compact) return `<button class="pkc${isFav ? ' fav' : ''}${isVal ? ' val' : ''}" ${attrs}>
         <span class="o">${label}${isVal ? ' ⭐' : ''}</span><b>${fnum(mk.fair_prob[o] * 100, 0)}%${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</b>
         <span class="cyan">≥ ${odds(minB365(mk.fair_odds[o], thr))}</span></button>`;
@@ -620,10 +647,54 @@
         <b>${fnum(mk.fair_prob[o] * 100, 0)} %${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</b>
         <span>JUSTA ${odds(mk.fair_odds[o])}</span>
         <span class="cyan">B365 ≥ ${odds(minB365(mk.fair_odds[o], thr))}</span>
-        <span class="muted">${b ? esc(b.book) : '—'}</span>
-        <span class="${b && b.edge > 0 ? 'pos' : 'muted'}">${b ? `${odds(b.odds)} (${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)` : ''}</span>
+        ${mk.best ? `<span class="muted">${b ? esc(b.book) : '—'}</span>
+        <span class="${b && b.edge > 0 ? 'pos' : 'muted'}">${b ? `${odds(b.odds)} (${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)` : ''}</span>` : ''}
       </button>`;
     }).join('')}</div>`;
+  }
+
+  // Detalle de un partido, por mercados con su título (resultado, doble oportunidad, goles…).
+  function pickDetail(p, thr) {
+    const sec = (title, html) => `<div class="pksec">${title}</div>${html}`;
+    const d = deriveMk(p.fair_prob), soccer = sportOf(p.sport_key) === 'soccer';
+    let h = sec(soccer ? 'RESULTADO FINAL (1X2)' : 'GANADOR', pickCells(p, p, 'h2h', thr, false));
+    if (d) h += sec('DOBLE OPORTUNIDAD', pickCells(p, d.dc, 'dc', thr, false)) + sec('EMPATE NO VALE (SE DEVUELVE SI EMPATA)', pickCells(p, d.dnb, 'dnb', thr, false));
+    if (p.totals) h += sec(`MÁS/MENOS ${ptxt(p.totals.point)} GOLES`, pickCells(p, p.totals, 'totals', thr, false));
+    if (p.extras) {
+      (p.extras.lines || []).forEach(l => { h += sec(`MÁS/MENOS ${ptxt(l.point)} GOLES`, pickCells(p, l, 'totals', thr, false)); });
+      if (p.extras.btts) h += sec('AMBOS MARCAN', pickCells(p, p.extras.btts, 'btts', thr, false));
+      if (!p.extras.btts && !(p.extras.lines || []).length) h += `<div class="muted" style="margin-top:8px">PINNACLE NO OFRECE ESTOS MERCADOS EN ESTE PARTIDO.</div>`;
+    } else if (soccer) {
+      h += `<button class="block" style="margin-top:10px" data-extras="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ AMBOS MARCAN Y MÁS/MENOS 1,5 / 3,5 · 2 CRÉDITOS</button>`;
+    }
+    return h;
+  }
+
+  // Pide los mercados extra de un partido (gasta 2 créditos; se guardan 30 min).
+  async function loadExtras(id, confirmLow) {
+    if (picksBusy) return;
+    picksBusy = true; picksMsg = 'BUSCANDO MÁS MERCADOS…'; render();
+    try {
+      const r = await S.callPicks({ action: 'extras', pickId: id, confirmLow: !!confirmLow });
+      picksBusy = false;
+      if (r.needConfirm) {
+        picksMsg = ''; render();
+        if (await ask(`Esto gasta ${r.cost} créditos y te dejará con ${r.credits.remaining - r.cost} de ${r.quota} (menos del 10 %).\n¿Seguir?`, { ok: 'GASTAR' })) return loadExtras(id, true);
+        return;
+      }
+      if (r.error) {
+        picksMsg = '⛔ ' + (r.error === 'started' ? 'El partido ya ha empezado.' : r.error === 'not_soccer' ? 'Solo hay mercados extra en fútbol.' : errText(r.error));
+        if (r.credits) savePicks({ credits: r.credits });
+        render(); return;
+      }
+      const p = (pickCache.picks || []).find(x => x.id === id);
+      if (p) p.extras = r.extras;
+      savePicks({ picks: pickCache.picks, credits: r.credits || pickCache.credits });
+      picksMsg = r.cost ? `GASTO ${r.cost} CRÉDITOS` : 'YA ESTABAN CARGADOS (SIN GASTO)';
+      render();
+    } catch (e) {
+      picksBusy = false; picksMsg = '⛔ Sin conexión. Inténtalo de nuevo.'; render();
+    }
   }
 
   function renderPicks() {
@@ -675,17 +746,17 @@
       const d = new Date(p.commence_time), day = dayOf(p);
       if (pv.sort === 'time') { const h = fdateShort(day); if (h !== hdr) { html += `<div class="datehdr">${h}</div>`; hdr = h; } }
       const time = d.toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' });
-      const ve = valueEdge(p), my = mine[p.id] || [], open = openPicks.has(p.id);
+      const vl = valueList(p), ve = vl.length ? vl[0].edge : null, my = mine[p.id] || [], open = openPicks.has(p.id);
       const when = pv.sort === 'time' ? time : `${day === today ? 'HOY' : day === tomorrow ? 'MAÑ' : fdateShort(day).split(' ')[0]} ${time}`;
       html += `<div class="pkcard${ve != null ? ' v' : ''}">
         <div class="pkhead" data-toggle="${esc(p.id)}">
           <div class="grow" style="min-width:0"><div class="ellipsis"><b>${esc(p.home)} – ${esc(p.away)}</b></div>
             <div class="muted ellipsis">${when} · ${sportEmoji(p.sport_key)} ${esc(p.league)}</div></div>
           ${my.length ? `<span class="tag mine" title="Ya apostado">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO</span>` : ''}
-          ${ve != null ? `<span class="tag P">⭐ +${fnum(ve * 100, 0)}%</span>` : ''}
+          ${ve != null ? `<span class="tag P pktag" title="${esc(vl[0].label)}">⭐ ${esc(vl[0].label.length > 12 ? vl[0].label.slice(0, 11) + '…' : vl[0].label)} +${fnum(ve * 100, 0)}%</span>` : ''}
           <span class="muted">${open ? '▲' : '▼'}</span>
         </div>
-        ${open ? pickCells(p, p, 'h2h', st.threshold, false) + (p.totals ? pickCells(p, p.totals, 'totals', st.threshold, false) : '') +
+        ${open ? pickDetail(p, st.threshold) +
           `<div class="muted" style="margin-top:6px">PRECIO JUSTO: ${(p.fair_src || ['pinnacle']).map(s => s === 'betfair' ? 'BETFAIR' : 'PINNACLE').join(' + ')} · CAPTURA ${new Date(p.captured_at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}${my.length ? ' · TUS APUESTAS: ' + my.map(b => esc(selText(b)) + ' @' + odds(b.odds)).join(', ') : ''}</div>`
           : pickCells(p, p, 'h2h', st.threshold, true) + (p.totals ? pickCells(p, p.totals, 'totals', st.threshold, true) : '')}
       </div>`;
@@ -700,13 +771,15 @@
     view.querySelectorAll('[data-toggle]').forEach(h => h.onclick = () => {
       const id = h.dataset.toggle; if (openPicks.has(id)) openPicks.delete(id); else openPicks.add(id); render();
     });
+    view.querySelectorAll('[data-extras]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadExtras(b.dataset.extras); });
     view.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
-      const p = (pickCache.picks || []).find(x => x.id === b.dataset.pick), o = b.dataset.o, market = b.dataset.m;
-      if (!p) return;
-      const mk = market === 'totals' ? p.totals : p, sp = sportOf(p.sport_key);
-      openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o), league: p.league, fair: L.r2(mk.fair_odds[o]), pickId: p.id, outcome: o,
-        commence: p.commence_time, sport: sportEmoji(p.sport_key), market, point: market === 'totals' ? p.totals.point : null,
-        type: market === 'totals' ? 'Goles' : sp === 'soccer' ? '1X2' : 'Ganador' });
+      const p = (pickCache.picks || []).find(x => x.id === b.dataset.pick), o = b.dataset.o, market = b.dataset.m, pt = b.dataset.pt;
+      const mk = p && mkFor(p, market, pt);
+      if (!mk) return;
+      const sp = sportOf(p.sport_key);
+      openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o, market, pt != null ? +pt : null), league: p.league, fair: L.r2(mk.fair_odds[o]), pickId: p.id, outcome: o,
+        commence: p.commence_time, sport: sportEmoji(p.sport_key), market, point: market === 'totals' ? +pt : null,
+        type: market === 'totals' ? 'Goles' : market === 'btts' ? 'Ambos marcan' : market === 'dc' ? 'Doble oportunidad' : market === 'dnb' ? 'Empate no vale' : sp === 'soccer' ? '1X2' : 'Ganador' });
     });
   }
 
@@ -768,7 +841,7 @@
       <h2>CLV POR LIGA</h2>
       <div class="card">${clvTable(L.clvBy(bs, b => b.league))}</div>
       <h2>CLV POR MERCADO</h2>
-      <div class="card">${clvTable(L.clvBy(bs, b => b.pickMarket === 'totals' ? 'MÁS/MENOS' : 'GANADOR (1X2)'))}</div>` : ''}
+      <div class="card">${clvTable(L.clvBy(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>` : ''}
       <h2>PICOS Y CAÍDAS · BENEFICIO ACUMULADO</h2>
       <div class="card">
         ${kv('ACTUAL', `<span class="${cls(pk.current)}">${seur(pk.current)}</span>`)}
