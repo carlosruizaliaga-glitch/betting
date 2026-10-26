@@ -36,7 +36,7 @@ const ev = { id: 'e1', home_team: 'A', away_team: 'B', bookmakers: [
   bk('marathonbet', [tot('alternate_totals', [[1.5, 1.55, 2.7], [3.5, 3.0, 1.4]]), btts(2.05, 1.8)]),
   bk('williamhill', [tot('alternate_totals', [[2.5, 2.0, 1.9]])])] };
 const ex = buildExtras(ev, 'mult', 3);
-assert.deepStrictEqual(ex.lines.map(l => l.point), [1.5, 3.5]);
+assert.deepStrictEqual(ex.lines.map(l => l.point), [1.5, 3.5]);   // 0,5 no sale si las casas no lo ofrecen
 const l15 = ex.lines[0];
 assert(close(l15.fair_prob.O + l15.fair_prob.U, 1));
 assert.strictEqual(l15.best.O.book, 'Marathonbet');

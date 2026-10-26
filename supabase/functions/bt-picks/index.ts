@@ -5,7 +5,7 @@
 //   status       → créditos que quedan y qué secretos faltan (no gasta créditos)
 //   detect_chat  → lee getUpdates del bot para encontrar tu chat_id
 //   picks        → picks guardados de las próximas horas (no gasta créditos)
-//   extras       → { pickId, confirmLow } Ambos marcan y Más/Menos 1,5 y 3,5 de un partido (2 créditos)
+//   extras       → { pickId, confirmLow } Ambos marcan y Más/Menos 0,5, 1,5 y 3,5 de un partido (2 créditos)
 //   scan         → { mode: 'value'|'all', send: true, confirmLow: false }
 //                  (manual: ligas activas + Más/Menos en fútbol; auto: solo ligas ⭐ y solo ganador)
 // POST { action: 'cron', cronKey } (pg_cron cada 5 min): cuota de cierre, CLV, cierre automático y envío diario.

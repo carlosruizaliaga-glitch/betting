@@ -665,7 +665,7 @@
       if (p.extras.btts) h += sec('AMBOS MARCAN', pickCells(p, p.extras.btts, 'btts', thr, false));
       if (!p.extras.btts && !(p.extras.lines || []).length) h += `<div class="muted" style="margin-top:8px">PINNACLE NO OFRECE ESTOS MERCADOS EN ESTE PARTIDO.</div>`;
     } else if (soccer) {
-      h += `<button class="block" style="margin-top:10px" data-extras="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ AMBOS MARCAN Y MÁS/MENOS 1,5 / 3,5 · 2 CRÉDITOS</button>`;
+      h += `<button class="block" style="margin-top:10px" data-extras="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ AMBOS MARCAN Y MÁS/MENOS 0,5 / 1,5 / 3,5 · 2 CRÉDITOS</button>`;
     }
     return h;
   }
