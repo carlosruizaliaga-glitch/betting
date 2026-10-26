@@ -66,6 +66,10 @@ window.fetch = async (url, opt) => {
     if (body.action === 'picks') return R({ ok: true, picks: __mock.picks, credits: cr });
     if (body.action === 'status') return R({ ok: true, secrets: { odds: true, token: true, chat: true }, names: ['ODDS_API_KEY', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'],
       credits: cr, sports: __mock.sportsInfo.map(s => s.key), sportsInfo: __mock.sportsInfo });
+    if (body.action === 'extras') return R({ ok: true, cost: 2, credits: { ...cr, remaining: 416, used: 84 }, extras: { at: new Date().toISOString(),
+      btts: { fair_prob: { Y: 0.52, N: 0.48 }, fair_odds: { Y: 1.92, N: 2.08 }, fair_src: ['pinnacle'], best: { Y: { book: 'Marathonbet', odds: 2.05, edge: 0.066 }, N: { book: 'Marathonbet', odds: 1.95, edge: -0.06 } }, value_outcome: 'Y' },
+      lines: [{ point: 1.5, fair_prob: { O: 0.78, U: 0.22 }, fair_odds: { O: 1.28, U: 4.55 }, fair_src: ['pinnacle'], best: { O: { book: 'Unibet', odds: 1.27, edge: -0.01 }, U: { book: 'Unibet', odds: 4.4, edge: -0.03 } }, value_outcome: null },
+        { point: 3.5, fair_prob: { O: 0.27, U: 0.73 }, fair_odds: { O: 3.7, U: 1.37 }, fair_src: ['pinnacle'], best: { O: { book: 'Unibet', odds: 3.6, edge: -0.03 }, U: { book: 'Unibet', odds: 1.4, edge: 0.02 } }, value_outcome: null }] } });
     if (body.action === 'detect_chat') return R({ ok: true, chats: [{ id: '123456789', name: 'Prueba' }] });
     if (body.action === 'scan') return R({ ok: true, mode: body.mode, cost: 3, sent: 1, tgError: null, credits: { ...cr, remaining: 415, used: 85 }, picks: __mock.picks,
       leagues: [{ name: 'LaLiga', events: 2 }, { name: 'NBA', events: 1 }], fetchErrors: [] });

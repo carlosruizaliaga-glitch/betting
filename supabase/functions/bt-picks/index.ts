@@ -5,11 +5,12 @@
 //   status       → créditos que quedan y qué secretos faltan (no gasta créditos)
 //   detect_chat  → lee getUpdates del bot para encontrar tu chat_id
 //   picks        → picks guardados de las próximas horas (no gasta créditos)
+//   extras       → { pickId, confirmLow } Ambos marcan y Más/Menos 1,5 y 3,5 de un partido (2 créditos)
 //   scan         → { mode: 'value'|'all', send: true, confirmLow: false }
 //                  (manual: ligas activas + Más/Menos en fútbol; auto: solo ligas ⭐ y solo ganador)
 // POST { action: 'cron', cronKey } (pg_cron cada 5 min): cuota de cierre, CLV, cierre automático y envío diario.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { BOOKS, buildPicks, formatMessages, pinnacleFair, clv, sportOf, settleOutcome, betProfit, finalScore } from './picks.js';
+import { BOOKS, buildPicks, buildExtras, formatMessages, pinnacleFair, closingFairFor, clv, sportOf, settleOutcome, betProfit, finalScore } from './picks.js';
 
 const ODDS = 'https://api.the-odds-api.com/v4';
 const CACHE_MIN = 30;
@@ -188,6 +189,33 @@ async function scan(body: any) {
   };
 }
 
+// ---------- Mercados extra bajo demanda (ambos marcan y Más/Menos 1,5 y 3,5) ----------
+// Solo en fútbol y partidos sin empezar. Cuesta 1 crédito por mercado (2 en total) y se guarda 30 min.
+async function extras(body: any) {
+  if (!env('ODDS_API_KEY')) return { error: 'missing_odds_key' };
+  const { data: p } = await db.from('bt_picks').select('id,sport_key,commence_time,extras').eq('id', String(body.pickId || '')).maybeSingle();
+  if (!p) return { error: 'no_pick' };
+  if (sportOf(p.sport_key) !== 'soccer') return { error: 'not_soccer' };
+  if (new Date(p.commence_time) <= new Date()) return { error: 'started' };
+  if (p.extras && p.extras.at && Date.now() - new Date(p.extras.at).getTime() < CACHE_MIN * 60e3) {
+    return { ok: true, extras: p.extras, cost: 0, credits: await loadCredits() };
+  }
+  const cost = 2;
+  if (!credits) credits = await loadCredits();
+  if (credits && credits.remaining != null) {
+    const quota = (credits.used || 0) + credits.remaining;
+    if (credits.remaining < cost) return { error: 'no_credits', cost, credits, quota };
+    if (!body.confirmLow && quota > 0 && credits.remaining - cost < quota * LOW_SHARE) return { needConfirm: true, cost, credits, quota };
+  }
+  const st = await settings();
+  const r = await oddsGet(`/sports/${p.sport_key}/events/${p.id}/odds`, { bookmakers: BOOKS.join(','), markets: 'btts,alternate_totals', oddsFormat: 'decimal' });
+  if (!r.ok) return { error: (r.data && (r.data.message || r.data.error_code)) || ('HTTP ' + r.status) };
+  const ex = buildExtras(r.data, st.devig, st.threshold);
+  await db.from('bt_picks').update({ extras: ex }).eq('id', p.id);
+  await saveCredits();
+  return { ok: true, extras: ex, cost, credits };
+}
+
 // ---------- Tareas programadas ----------
 const MIN = 60e3;
 const madridHM = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
@@ -207,9 +235,12 @@ async function captureClosing(now: Date) {
   const ids = [...new Set(bets.map((r: any) => r.data.pickId))];
   if (!ids.length) return { fetched: 0, missed: 0 };
   // Línea de Más/Menos apostada en cada partido (si la hay): se pide también ese mercado (1 crédito más).
-  const totPoint = new Map();
-  for (const r of bets) if (r.data.pickMarket === 'totals' && r.data.point != null) totPoint.set(r.data.pickId, +r.data.point);
-  const { data: picks } = await db.from('bt_picks').select('id,sport_key,commence_time').in('id', ids).is('closing', null);
+  const totPoint = new Map(), bttsIds = new Set();
+  for (const r of bets) {
+    if (r.data.pickMarket === 'totals' && r.data.point != null) totPoint.set(r.data.pickId, +r.data.point);
+    if (r.data.pickMarket === 'btts') bttsIds.add(r.data.pickId);
+  }
+  const { data: picks } = await db.from('bt_picks').select('id,sport_key,commence_time,totals').in('id', ids).is('closing', null);
   const st = await settings();
   let fetched = 0, missed = 0;
   for (const p of picks || []) {
@@ -221,8 +252,12 @@ async function captureClosing(now: Date) {
     }
     if (!env('ODDS_API_KEY')) break;
     const tp = totPoint.get(p.id);
-    const r = await oddsGet(`/sports/${p.sport_key}/events/${p.id}/odds`, { bookmakers: 'pinnacle', markets: tp != null ? 'h2h,totals' : 'h2h', oddsFormat: 'decimal' });
-    const c = r.ok ? pinnacleFair(r.data, st.devig, tp) : null;
+    // h2h siempre (también sirve para doble oportunidad y empate no vale); más la línea de goles y/o ambos marcan si se apostó.
+    const mk = ['h2h'];
+    if (tp != null) mk.push(p.totals && +p.totals.point === tp ? 'totals' : 'alternate_totals');
+    if (bttsIds.has(p.id)) mk.push('btts');
+    const r = await oddsGet(`/sports/${p.sport_key}/events/${p.id}/odds`, { bookmakers: 'pinnacle', markets: mk.join(','), oddsFormat: 'decimal' });
+    const c = r.ok ? pinnacleFair(r.data, st.devig, tp, bttsIds.has(p.id)) : null;
     if (c) {
       await db.from('bt_picks').update({ closing: { ...c, at: now.toISOString() }, closing_at: now.toISOString() }).eq('id', p.id);
       fetched++;
@@ -241,8 +276,7 @@ async function fillClv() {
   let n = 0;
   for (const r of need) {
     const c: any = map.get(r.data.pickId);
-    const src = c && (r.data.pickMarket === 'totals' ? (c.totals && +c.totals.point === +r.data.point ? c.totals : null) : c);
-    const fair = src && src.fair_odds && src.fair_odds[r.data.pickOutcome];
+    const fair = closingFairFor(c, r.data);
     let data;
     // Sin cierre (apuesta apuntada con el partido ya empezado): se marca para que la app no espere.
     if (c && c.missed) data = { ...r.data, clvMissed: true };
@@ -301,7 +335,7 @@ async function autoSettle(now: Date) {
       if (!fs) { state.tries[id] = (state.tries[id] || 0) + 1; continue; }
       delete state.tries[id];
       for (const r of rows.filter((x: any) => x.data.pickId === id)) {
-        const d = r.data, market = d.pickMarket === 'totals' ? 'totals' : 'h2h';
+        const d = r.data, market = d.pickMarket || 'h2h';
         const result = settleOutcome(market, d.pickOutcome, fs.home, fs.away, d.point != null ? +d.point : NaN);
         if (!result) continue;
         const data = { ...d, result, closedAt: now.getTime(), autoSettled: true, score: `${fs.home}-${fs.away}` };
@@ -400,6 +434,8 @@ Deno.serve(async req => {
         return json({ ok: true, picks: await picksFromDb(), credits: await loadCredits() });
       case 'scan':
         return json(await scan(body));
+      case 'extras':
+        return json(await extras(body));
       default:
         return json({ error: 'unknown_action' }, 400);
     }
