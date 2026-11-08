@@ -305,7 +305,7 @@
     const axisLines = refs.length ? refs.map(r => hline(r.v, r.col || 'var(--line)', r.label, r.col)).join('')
       : hline(hi, 'var(--line)', opts.axis(hi)) + hline(lo, 'var(--line)', opts.axis(lo));
     return `<div class="chart" data-chart="${opts.id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label)}">
-      <defs><linearGradient id="gA-${opts.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fcf98" stop-opacity=".22"/><stop offset="1" stop-color="#5fcf98" stop-opacity="0"/></linearGradient></defs>
+      <defs><linearGradient id="gA-${opts.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#43e8c0" stop-opacity=".22"/><stop offset="1" stop-color="#43e8c0" stop-opacity="0"/></linearGradient></defs>
       ${axisLines}
       ${opts.area ? `<path d="${d} L${last.x.toFixed(1)} ${H - pb} L${pl} ${H - pb} Z" fill="url(#gA-${opts.id})"/>` : ''}
       <path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>
