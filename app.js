@@ -165,9 +165,9 @@
     if (!S.loggedIn()) { document.body.classList.add('noapp'); return renderLogin(); }
     document.body.classList.remove('noapp');
     renderHeader();
-    const navTab = tab === 'cash' ? 'home' : tab;
+    const navTab = tab === 'cash' ? 'home' : tab.startsWith('set-') ? 'settings' : tab;
     document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === navTab));
-    ({ home: renderHome, bets: renderBets, picks: renderPicks, stats: renderStats, settings: renderSettings, cash: renderCash })[tab]();
+    (tab.startsWith('set-') ? renderSettings : ({ home: renderHome, bets: renderBets, picks: renderPicks, stats: renderStats, settings: renderSettings, cash: renderCash })[tab])();
     if (S.status() === 'bad_secret') {
       view.insertAdjacentHTML('afterbegin', `<div class="banner">EL CÓDIGO YA NO ES VÁLIDO. AJUSTES → CERRAR SESIÓN Y VUELVE A ENTRAR.</div>`);
     }
@@ -967,7 +967,43 @@
     // Una sola comprobación automática al abrir Ajustes; el botón la repite cuando quieras.
     if (!upd.autoDone) { upd.autoDone = true; checkUpd().then(() => { if (tab === 'settings') render(); }); }
     const st2 = S.status();
+    const sub = tab.startsWith('set-') ? tab.slice(4) : 'hub';
+    const TITLES = { stake: 'STAKE Y LÍMITES', picks: 'BÚSQUEDA DE PICKS', value: 'VALOR Y CASAS', auto: 'AUTOMÁTICO', lists: 'LISTAS', conn: 'CONEXIÓN', data: 'COPIA DE SEGURIDAD' };
+    const kl = { 0.125: '⅛', 0.25: '¼', 0.5: '½' }[st.kelly] || '¼';
+    const nOn = (st.scan || []).filter(l => l.on).length;
+    const item = (key, ic, title, subtitle) => `<button class="mrow" data-sub="${key}"><span class="mic">${ic}</span><span class="grow"><b>${title}</b><em>${subtitle}</em></span><span class="chev">›</span></button>`;
+    const page = (key, html) => `<div data-sp="${key}" ${sub === key ? '' : 'hidden'}>${html}</div>`;
     view.innerHTML = `
+      <div data-sp="hub" ${sub === 'hub' ? '' : 'hidden'}>
+        <h2>APUESTAS</h2>
+        <div class="mlist">
+          ${item('stake', '💶', 'STAKE Y LÍMITES', `UNIDAD ${fnum(st.unit, 2).replace(/,00$/, '')} % · KELLY ${kl} · PÉRDIDA ${st.lossWeek || st.lossMonth ? 'LIMITADA' : 'SIN LÍMITE'}`)}
+          <button class="mrow" id="toCashRow"><span class="mic">🏦</span><span class="grow"><b>CAJA</b><em>DEPÓSITOS, RETIRADAS Y BONOS</em></span><span class="chev">›</span></button>
+          ${item('lists', '📋', 'LISTAS', 'CASAS, DEPORTES, TIPOS, TIPSTERS Y LIGAS')}
+        </div>
+        <h2>PICKS</h2>
+        <div class="mlist">
+          ${item('picks', '🔥', 'BÚSQUEDA DE PICKS', `${nOn} LIGAS ACTIVAS · ${st.totals !== false ? 'CON MÁS/MENOS' : 'SOLO GANADOR'}`)}
+          ${item('value', '⭐', 'VALOR Y CASAS', `UMBRAL ${fnum(st.threshold, st.threshold % 1 ? 1 : 0)} % · ${(st.myBooks || []).length ? st.myBooks.length + ' CASAS' : 'TODAS LAS CASAS'}`)}
+          ${item('auto', '⏱', 'AUTOMÁTICO', `ENVÍO ${st.autoSend && st.autoSend.on ? esc(st.autoSend.time) : 'APAGADO'} · CIERRE ${st.autoSettle !== false ? 'SÍ' : 'NO'}`)}
+        </div>
+        <h2>SISTEMA</h2>
+        <div class="mlist">
+          ${item('conn', '🔌', 'CONEXIÓN', 'THE ODDS API Y TELEGRAM')}
+          ${item('data', '💾', 'COPIA DE SEGURIDAD', 'EXCEL, COPIA COMPLETA E IMPORTAR')}
+        </div>
+      <h2>LA APP</h2>
+      <div class="card"><div class="kv"><span>VERSIÓN</span><span class="num">${esc(window.APP_VERSION || '—')}</span></div>
+        <div class="kv"><span>ÚLTIMA</span><span class="num">${upd.error ? '<span class="yellow">SIN CONEXIÓN</span>' : upd.latest ? esc(upd.latest) : '—'}</span></div>
+        <button class="block ${hasUpd() ? 'primary' : ''}" id="updBtn" style="margin-top:10px">${hasUpd() ? '⬇ ACTUALIZAR LA APP AHORA' : '↻ BUSCAR ACTUALIZACIÓN'}</button>
+        <div class="muted" style="margin-top:8px">ACTUALIZAR NO BORRA NADA: TUS DATOS ESTÁN EN LA NUBE Y EN ESTE MÓVIL.</div></div>
+      <h2>SESIÓN</h2>
+      <div class="card"><div class="muted">ESTADO: ${st2 === 'ok' ? '<span class="pos">SINCRONIZADO</span>' : esc(String(st2).toUpperCase())}${S.lastSync() ? ' · ÚLTIMA ' + new Date(S.lastSync()).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' }) : ''}</div>
+        <button class="danger block" id="logout" style="margin-top:10px">CERRAR SESIÓN EN ESTE MÓVIL</button></div>
+        <div class="muted" style="text-align:center;margin-top:18px">BETTING</div>
+      </div>
+      ${sub === 'hub' ? '' : `<div class="row" style="margin-top:10px"><button class="small" id="sback">‹ AJUSTES</button><div class="grow"></div><b class="label" style="margin:0">${TITLES[sub] || ''}</b></div>`}
+      ${page('stake', `
       <h2>STAKE</h2>
       <div class="card"><label style="margin-top:0">UNIDAD (% DEL DISPONIBLE POR NIVEL)</label>
         <div class="row"><input id="unit" inputmode="decimal" value="${fnum(st.unit, 2)}" style="max-width:120px"><span class="muted">NIVEL 5 = 5 × ${fnum(st.unit, 2)} % = ${fnum(5 * st.unit, 2)} % DEL DISPONIBLE</span></div>
@@ -977,11 +1013,8 @@
       <h2>LÍMITES DE PÉRDIDA</h2>
       <div class="card"><div class="row"><div class="grow"><label style="margin-top:0">SEMANAL €</label><input id="lw" inputmode="decimal" value="${st.lossWeek ? fnum(st.lossWeek) : ''}" placeholder="Sin límite"></div>
         <div class="grow"><label style="margin-top:0">MENSUAL €</label><input id="lm" inputmode="decimal" value="${st.lossMonth ? fnum(st.lossMonth) : ''}" placeholder="Sin límite"></div></div>
-        <div class="muted" style="margin-top:6px">SI LO SUPERAS, INICIO MUESTRA UN AVISO EN ROJO. SEMANA = LUNES A DOMINGO.</div></div>
-      <h2>MIS CASAS</h2>
-      <div class="card"><label style="margin-top:0">DÓNDE PUEDES APOSTAR · SI NO MARCAS NINGUNA SE USAN TODAS</label>
-        <div class="chips" style="flex-wrap:wrap">${BOOK_LIST.map(n => `<button type="button" data-mybook="${esc(n)}" class="${(st.myBooks || []).includes(n) ? 'on' : ''}">${esc(n)}</button>`).join('')}</div>
-        <div class="muted" style="margin-top:6px">LA MEJOR CUOTA Y EL ⭐ DE PICKS SE CALCULAN SOLO CON LAS CASAS MARCADAS. BET365 NO ENTRA EN LA BÚSQUEDA: PARA ELLA USA LA CUOTA MÍNIMA "≥" O ESCRIBE SU CUOTA AL APUNTAR. SE APLICA A LAS BÚSQUEDAS NUEVAS.</div></div>
+        <div class="muted" style="margin-top:6px">SI LO SUPERAS, INICIO MUESTRA UN AVISO EN ROJO. SEMANA = LUNES A DOMINGO.</div></div>`)}
+      ${page('picks', `
       <h2>ESCÁNER DE PICKS</h2>
       <div class="card"><label style="margin-top:0">LIGAS · ✓ = SE BUSCA · ⭐ = ENTRA EN EL ENVÍO DIARIO</label>
         ${(st.scan || []).map((l, i) => `<div class="lg">
@@ -993,11 +1026,20 @@
         <div class="muted" style="margin-top:8px">${scanBudget(st)}</div>
         <label>MÁS/MENOS GOLES EN BÚSQUEDAS MANUALES</label>
         <div class="seg"><button data-tot="on" class="${st.totals !== false ? 'on' : ''}">CON MÁS/MENOS</button><button data-tot="off" class="${st.totals === false ? 'on' : ''}">SOLO GANADOR</button></div>
-        <div class="row" style="margin-top:12px"><div class="grow"><label style="margin-top:0">UMBRAL DE VALOR %</label><input id="thr" inputmode="decimal" value="${fnum(st.threshold, st.threshold % 1 ? 1 : 0)}"></div>
-          <div class="grow"><label style="margin-top:0">ENVÍO POR DEFECTO</label><div class="seg"><button data-sm="value" class="${st.sendMode === 'value' ? 'on' : ''}">SOLO ⭐</button><button data-sm="all" class="${st.sendMode === 'all' ? 'on' : ''}">TODOS</button></div></div></div>
+        <label>ENVÍO POR DEFECTO</label>
+        <div class="seg"><button data-sm="value" class="${st.sendMode === 'value' ? 'on' : ''}">SOLO ⭐</button><button data-sm="all" class="${st.sendMode === 'all' ? 'on' : ''}">TODOS</button></div></div>`)}
+      ${page('value', `
+      <h2>MIS CASAS</h2>
+      <div class="card"><label style="margin-top:0">DÓNDE PUEDES APOSTAR · SI NO MARCAS NINGUNA SE USAN TODAS</label>
+        <div class="chips" style="flex-wrap:wrap">${BOOK_LIST.map(n => `<button type="button" data-mybook="${esc(n)}" class="${(st.myBooks || []).includes(n) ? 'on' : ''}">${esc(n)}</button>`).join('')}</div>
+        <div class="muted" style="margin-top:6px">LA MEJOR CUOTA Y EL ⭐ DE PICKS SE CALCULAN SOLO CON LAS CASAS MARCADAS. BET365 NO ENTRA EN LA BÚSQUEDA: PARA ELLA USA LA CUOTA MÍNIMA "≥" O ESCRIBE SU CUOTA AL APUNTAR. SE APLICA A LAS BÚSQUEDAS NUEVAS.</div></div>
+      <h2>UMBRAL Y MARGEN</h2>
+      <div class="card"><label style="margin-top:0">UMBRAL DE VALOR %</label><input id="thr" inputmode="decimal" value="${fnum(st.threshold, st.threshold % 1 ? 1 : 0)}" style="max-width:120px">
+        <div class="muted" style="margin-top:6px">UN PICK CUENTA COMO ⭐ SI LA MEJOR CUOTA SUPERA LA JUSTA EN ESTE PORCENTAJE O MÁS.</div>
         <label>QUITAR EL MARGEN (PINNACLE Y BETFAIR)</label>
         <div class="seg"><button data-dv="power" class="${st.devig !== 'mult' ? 'on' : ''}">POWER</button><button data-dv="mult" class="${st.devig === 'mult' ? 'on' : ''}">PROPORCIONAL</button></div>
-        <div class="muted" style="margin-top:6px">PROPORCIONAL REPARTE EL MARGEN A PARTES IGUALES; POWER CARGA MÁS MARGEN A LOS NO FAVORITOS, QUE ES DONDE LAS CASAS LO PONEN DE VERDAD.</div></div>
+        <div class="muted" style="margin-top:6px">PROPORCIONAL REPARTE EL MARGEN A PARTES IGUALES; POWER CARGA MÁS MARGEN A LOS NO FAVORITOS, QUE ES DONDE LAS CASAS LO PONEN DE VERDAD.</div></div>`)}
+      ${page('auto', `
       <h2>ENVÍO AUTOMÁTICO DIARIO</h2>
       <div class="card"><div class="row"><div class="grow"><div class="seg"><button data-auto="off" class="${!(st.autoSend && st.autoSend.on) ? 'on' : ''}">APAGADO</button><button data-auto="on" class="${st.autoSend && st.autoSend.on ? 'on' : ''}">ENCENDIDO</button></div></div>
         <input id="autoTime" type="time" value="${esc((st.autoSend && st.autoSend.time) || '10:00')}" style="width:120px"></div>
@@ -1006,30 +1048,26 @@
       <div class="card"><div class="seg"><button data-aset="on" class="${st.autoSettle !== false ? 'on' : ''}">ENCENDIDO</button><button data-aset="off" class="${st.autoSettle === false ? 'on' : ''}">APAGADO</button></div>
         <label>AVISO EN TELEGRAM AL CERRAR</label>
         <div class="seg"><button data-anot="on" class="${st.settleNotify !== false ? 'on' : ''}">SÍ</button><button data-anot="off" class="${st.settleNotify === false ? 'on' : ''}">NO</button></div>
-        <div class="muted" style="margin-top:6px">LAS APUESTAS HECHAS DESDE UN PICK (1X2, GANADOR Y MÁS/MENOS) SE CIERRAN SOLAS CON EL MARCADOR FINAL, UNAS 2 H DESPUÉS DEL INICIO. GASTA 2 CRÉDITOS POR LIGA Y CONSULTA (COMO MUCHO UNA CADA 30 MIN). PUEDES CORREGIRLAS A MANO. EN FÚTBOL CUENTA EL RESULTADO QUE DA LA API (EN COPAS CON PRÓRROGA, REVÍSALO).</div></div>
-      <h2>CONEXIÓN · THE ODDS API Y TELEGRAM</h2>
-      <div class="card"><div id="conn" class="muted">PULSA COMPROBAR PARA VER EL ESTADO.</div>
-        <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button></div></div>
+        <div class="muted" style="margin-top:6px">LAS APUESTAS HECHAS DESDE UN PICK (1X2, GANADOR Y MÁS/MENOS) SE CIERRAN SOLAS CON EL MARCADOR FINAL, UNAS 2 H DESPUÉS DEL INICIO. GASTA 2 CRÉDITOS POR LIGA Y CONSULTA (COMO MUCHO UNA CADA 30 MIN). PUEDES CORREGIRLAS A MANO. EN FÚTBOL CUENTA EL RESULTADO QUE DA LA API (EN COPAS CON PRÓRROGA, REVÍSALO).</div></div>`)}
+      ${page('lists', `
       <h2>LISTAS</h2>
       ${Object.keys(LISTS).map(k => `<div class="card listedit"><label style="margin-top:0">${LISTS[k]}</label>
         <div class="chips">${(st[k] || []).map((v, i) => `<button data-list="${k}" data-i="${i}">${esc(v)}<i>×</i></button>`).join('') || '<span class="muted">VACÍA</span>'}</div>
-        <div class="row" style="margin-top:8px"><input data-new="${k}" placeholder="Añadir…" autocomplete="off"><button class="small" data-add="${k}">AÑADIR</button></div></div>`).join('')}
-      <h2>CAJA</h2>
-      <button class="block" id="toCash">DEPÓSITOS, RETIRADAS Y BONOS ›</button>
+        <div class="row" style="margin-top:8px"><input data-new="${k}" placeholder="Añadir…" autocomplete="off"><button class="small" data-add="${k}">AÑADIR</button></div></div>`).join('')}`)}
+      ${page('conn', `
+      <h2>CONEXIÓN · THE ODDS API Y TELEGRAM</h2>
+      <div class="card"><div id="conn" class="muted">PULSA COMPROBAR PARA VER EL ESTADO.</div>
+        <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button></div></div>`)}
+      ${page('data', `
       <h2>COPIA DE SEGURIDAD</h2>
       <div class="card"><div class="row" style="flex-wrap:wrap;gap:6px">
         <button class="small" id="csvBets">APUESTAS (EXCEL/CSV)</button><button class="small" id="csvMoves">CAJA (EXCEL/CSV)</button>
         <button class="small" id="json">COPIA COMPLETA</button><button class="small" id="imp">IMPORTAR COPIA</button>
-        <input type="file" id="impFile" accept="application/json,.json" style="display:none"></div></div>
-      <h2>LA APP</h2>
-      <div class="card"><div class="kv"><span>VERSIÓN</span><span class="num">${esc(window.APP_VERSION || '—')}</span></div>
-        <div class="kv"><span>ÚLTIMA</span><span class="num">${upd.error ? '<span class="yellow">SIN CONEXIÓN</span>' : upd.latest ? esc(upd.latest) : '—'}</span></div>
-        <button class="block ${hasUpd() ? 'primary' : ''}" id="updBtn" style="margin-top:10px">${hasUpd() ? '⬇ ACTUALIZAR LA APP AHORA' : '↻ BUSCAR ACTUALIZACIÓN'}</button>
-        <div class="muted" style="margin-top:8px">ACTUALIZAR NO BORRA NADA: TUS DATOS ESTÁN EN LA NUBE Y EN ESTE MÓVIL.</div></div>
-      <h2>SESIÓN</h2>
-      <div class="card"><div class="muted">ESTADO: ${st2 === 'ok' ? '<span class="pos">SINCRONIZADO</span>' : esc(String(st2).toUpperCase())}${S.lastSync() ? ' · ÚLTIMA ' + new Date(S.lastSync()).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' }) : ''}</div>
-        <button class="danger block" id="logout" style="margin-top:10px">CERRAR SESIÓN EN ESTE MÓVIL</button></div>
-      <div class="muted" style="text-align:center;margin-top:18px">BETTING · FASE 3</div>`;
+        <input type="file" id="impFile" accept="application/json,.json" style="display:none"></div></div>`)}
+      <button class="block" id="toCash" hidden>CAJA</button>`;
+    view.querySelectorAll('[data-sub]').forEach(b => b.onclick = () => go('set-' + b.dataset.sub));
+    view.querySelector('#toCashRow').onclick = () => go('cash');
+    const sb = view.querySelector('#sback'); if (sb) sb.onclick = () => { tab = 'settings'; render(); window.scrollTo(0, 0); navBack(); };
     const num = (id, key, min) => view.querySelector(id).onchange = ev => {
       const v = pnum(ev.target.value);
       if (ev.target.value.trim() === '' && key !== 'unit') { saveSettings({ [key]: null }); return; }
