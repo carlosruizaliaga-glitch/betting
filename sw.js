@@ -1,5 +1,5 @@
 // Service worker: guarda la app en caché para que funcione sin conexión.
-const CACHE = 'betting-v23';
+const CACHE = 'betting-v24';
 const FILES = ['./', 'index.html', 'app.js', 'logic.js', 'store.js', 'version.js', 'manifest.webmanifest', 'favicon.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable.png'];
 const FONTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -24,7 +24,9 @@ self.addEventListener('fetch', e => {
   if (url.pathname.endsWith('/version.json')) return;   // la comprobación de versión siempre va directa a internet
   // Red primero (para recibir actualizaciones), caché si no hay conexión.
   // 'no-cache' obliga al navegador a comprobar con el servidor: así nunca se mezclan archivos de versiones distintas.
-  const req = e.request.mode === 'navigate' ? e.request : new Request(e.request, { cache: 'no-cache' });
+  // También la propia página (index.html): sin esto el navegador podía servir un index.html de hace unos minutos
+  // con el app.js nuevo, y la pantalla salía sin estilos.
+  const req = e.request.mode === 'navigate' ? new Request(e.request.url, { cache: 'no-cache', credentials: 'same-origin' }) : new Request(e.request, { cache: 'no-cache' });
   e.respondWith(
     fetch(req).then(res => {
       const copy = res.clone();
