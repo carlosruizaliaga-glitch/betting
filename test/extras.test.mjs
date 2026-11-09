@@ -69,4 +69,8 @@ assert.strictEqual(outcomeName(p, '12', 'dc'), 'Girona o Betis');
 assert.strictEqual(outcomeName(p, '2', 'dnb'), 'Betis (empate nula)');
 assert.strictEqual(outcomeName(p, 'Y', 'btts'), 'Ambos marcan: sí');
 assert.strictEqual(outcomeName(p, '1'), 'Girona');
+// ---------- Precio de cada casa (para "mis casas") ----------
+assert.strictEqual(ex.btts.prices.Marathonbet.Y, 2.05);
+assert.strictEqual(ex.lines[0].prices.Marathonbet.O, 1.55);
+assert(!('Pinnacle' in ex.btts.prices));
 console.log('OK extras · doble oportunidad, empate no vale, ambos marcan, líneas y cierre');

@@ -122,6 +122,20 @@ function bestPrices(ev, getOdds, fairOdds) {
   return best;
 }
 
+// Cuota neta de cada casa (sin Pinnacle) para cada resultado: {casa: {resultado: cuota}}. La app la usa para filtrar por "mis casas".
+function allPrices(ev, getOdds, keys) {
+  const out = {};
+  for (const b of ev.bookmakers || []) {
+    if (b.key === 'pinnacle') continue;
+    const o = getOdds(b);
+    if (!o) continue;
+    const c = COMMISSION[b.key] || 0, row = {};
+    for (const k of keys) if (o[k] > 1) row[k] = r2(1 + (o[k] - 1) * (1 - c));
+    if (Object.keys(row).length) out[BOOK_NAMES[b.key] || b.title || b.key] = row;
+  }
+  return out;
+}
+
 function valueOf(best, threshold) {
   let v = null;
   for (const k of Object.keys(best)) {
@@ -142,7 +156,8 @@ function buildTotals(ev, method, threshold) {
   if (!c) return null;
   const fairOdds = toOdds(c.prob);
   const best = bestPrices(ev, b => totalsLines(b)[point], fairOdds);
-  return { point, pin_odds: pinL[point] || null, fair_prob: c.prob, fair_odds: fairOdds, fair_src: c.src, best, value_outcome: valueOf(best, threshold) };
+  return { point, pin_odds: pinL[point] || null, fair_prob: c.prob, fair_odds: fairOdds, fair_src: c.src, best, value_outcome: valueOf(best, threshold),
+    prices: allPrices(ev, b => totalsLines(b)[point], ['O', 'U']) };
 }
 
 // ---------- Mercados derivados del 1X2 (sin gastar créditos) ----------
@@ -164,13 +179,14 @@ export function buildExtras(ev, method, threshold, wanted = [0.5, 1.5, 3.5]) {
     const c = consensus(pinL[point], bfL[point], method);
     if (!c) continue;
     const fairOdds = toOdds(c.prob), best = bestPrices(ev, b => totalsLines(b, keys)[point], fairOdds);
-    lines.push({ point, fair_prob: c.prob, fair_odds: fairOdds, fair_src: c.src, best, value_outcome: valueOf(best, threshold) });
+    lines.push({ point, fair_prob: c.prob, fair_odds: fairOdds, fair_src: c.src, best, value_outcome: valueOf(best, threshold),
+      prices: allPrices(ev, b => totalsLines(b, keys)[point], ['O', 'U']) });
   }
   let btts = null;
   const c = consensus(bttsOdds(bookOf(ev, 'pinnacle')), bttsOdds(bookOf(ev, 'betfair_ex_eu')), method);
   if (c) {
     const fairOdds = toOdds(c.prob), best = bestPrices(ev, bttsOdds, fairOdds);
-    btts = { fair_prob: c.prob, fair_odds: fairOdds, fair_src: c.src, best, value_outcome: valueOf(best, threshold) };
+    btts = { fair_prob: c.prob, fair_odds: fairOdds, fair_src: c.src, best, value_outcome: valueOf(best, threshold), prices: allPrices(ev, bttsOdds, ['Y', 'N']) };
   }
   return { btts, lines, at: new Date().toISOString() };
 }
@@ -224,6 +240,7 @@ export function buildPicks(events, opts) {
       id: ev.id, sport_key: sportKey, sport: sportOf(sportKey), league, home: ev.home_team, away: ev.away_team, commence_time: ev.commence_time,
       pin_odds: h2h(bookOf(ev, 'pinnacle'), ev) || {}, fair_prob: prob, fair_odds: fairOdds, fair_src: c.src, best, favorite,
       value_outcome: valueOf(best, threshold), devig: method, captured_at: capturedAt.toISOString(),
+      prices: allPrices(ev, b => h2h(b, ev), Object.keys(prob)),
       totals: withTotals && sportOf(sportKey) === 'soccer' ? buildTotals(ev, method, threshold) : null
     });
   }

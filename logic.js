@@ -78,6 +78,20 @@
 
   const stakeFor = (available, level, unitPct) => r2(Math.max(0, available) * level * (unitPct || 1) / 100);
 
+  // Importe sugerido según la ventaja. Con p = 1 / cuota justa, Kelly dice apostar (p·cuota − 1) / (cuota − 1) de la banca;
+  // se usa solo una fracción (por defecto un cuarto) y se traduce al nivel de stake más cercano (mínimo 1, máximo capLevel).
+  // Sin ventaja (cuota ≤ justa) no se sugiere apostar: level 0.
+  function suggestStake(odds, fair, available, unitPct, frac, capLevel) {
+    const o = +odds, f = +fair;
+    if (!(o > 1) || !(f > 1)) return null;
+    const edge = o / f - 1;
+    if (!(edge > 0)) return { edge, pct: 0, stake: 0, level: 0 };
+    const pct = Math.max(0, ((o / f - 1) / (o - 1)) * (frac > 0 ? frac : 0.25) * 100);
+    const unit = unitPct > 0 ? unitPct : 1;
+    const level = Math.max(1, Math.min(capLevel || 5, Math.round(pct / unit)));
+    return { edge, pct, stake: stakeFor(available, level, unit), level };
+  }
+
   // ---------- Estadísticas ----------
   function summarize(bets) {
     const closed = bets.filter(isClosed);
@@ -196,7 +210,7 @@
   }
 
   const L = { r2, RESULTS, isClosed, risk, payout, potential, profit, comboOdds, byTime, madridDate, addDays, weekStart,
-    funds, stakeFor, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
+    funds, stakeFor, suggestStake, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
     clvBy, edgeAtBet, clvSeries };
   if (typeof module !== 'undefined') module.exports = L; else root.Logic = L;
 })(typeof window !== 'undefined' ? window : globalThis);

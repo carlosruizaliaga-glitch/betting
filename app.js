@@ -4,7 +4,7 @@
 
   const DEFAULT_SETTINGS = {
     id: 'settings', books: ['bet365'], sports: ['⚽'], types: ['1X2', 'Combinada'], tipsters: ['Carlos'], leagues: [],
-    unit: 1, lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: [], autoSend: { on: false, time: '10:00' }
+    unit: 1, kelly: 0.25, myBooks: [], lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: [], autoSend: { on: false, time: '10:00' }
   };
 
   // ---------- Acceso a datos ----------
@@ -411,6 +411,7 @@
       <div class="res" id="res">${Object.keys(L.RESULTS).map(r => `<button type="button" data-r="${r}" class="${b.result === r ? 'on' : ''}">${r === 'P' ? 'PEND.' : L.RESULTS[r].label}</button>`).join('')}</div>
       <div id="coBox" style="display:none"><label>IMPORTE COBRADO EN CASH OUT €</label><input id="co" inputmode="decimal" value="${b.cashout != null ? fnum(b.cashout) : ''}"></div>
       <div class="preview num" id="preview"></div>
+      <div class="sugg" id="sugg" style="display:none"></div>
       <label>CASA</label>${chips('book', st.books)}
       <label>DEPORTE</label>${chips('sport', st.sports)}
       <label>TIPO</label>${chips('type', st.types)}
@@ -450,6 +451,20 @@
       $('#preview').innerHTML = okNums
         ? `<span>${combo}RIESGO <b>${eur(L.risk(tmp))}</b> · POTENCIAL <b>${eur(L.potential(tmp))}</b>${edge}</span>${L.isClosed(tmp) ? `<b class="${cls(L.profit(tmp))}">${seur(L.profit(tmp))}</b>` : ''}`
         : `<span class="muted">${combo}PON CUOTA Y STAKE</span>`;
+      // Sugerencia de importe (solo apuestas simples hechas desde un pick, que tienen cuota justa).
+      const sg = $('#sugg'), sug = b.fair && b.legs.length === 1 ? L.suggestStake(o, b.fair, avail, st.unit, st.kelly) : null;
+      if (!sug) { sg.style.display = 'none'; return; }
+      sg.style.display = '';
+      sg.innerHTML = sug.level
+        ? `<span class="pos">✓ HAY VALOR ${spct(sug.edge, 1)}</span> · SUGERIDO <b>NIVEL ${sug.level}</b> (${eur(sug.stake)}) <button type="button" class="small" id="useSug">USAR</button>`
+        : `<span class="neg">SIN VALOR ${spct(sug.edge, 1)}</span> · POR DEBAJO DE LA CUOTA JUSTA`;
+      const use = $('#useSug');
+      if (use) use.onclick = () => {
+        b.level = sug.level;
+        $('#levels').querySelectorAll('button').forEach(x => x.classList.toggle('on', +x.dataset.l === b.level));
+        $('#stake').value = fnum(sug.stake);
+        refresh();
+      };
     }
     renderLegs(); refresh();
 
@@ -546,6 +561,33 @@
   const SPORT_EMOJI = { soccer: '⚽', basketball: '🏀', tennis: '🎾' };
   const sportOf = key => String(key || '').split('_')[0];
   const sportEmoji = key => SPORT_EMOJI[sportOf(key)] || '🏆';
+  // "Mis casas": si has marcado casas en Ajustes, la mejor cuota y el valor se calculan solo con ellas
+  // (hace falta que el pick traiga el precio de cada casa; los antiguos se ven como siempre hasta la próxima búsqueda).
+  const BOOK_LIST = ['Betfair Exch.', 'Matchbook', 'Marathonbet', '888sport', 'William Hill', 'Unibet', 'Betsson', '1xBet', 'NordicBet'];
+  const adjMk = (mk, mine, thr) => {
+    if (!mk || !mk.prices || !mine.length) return mk;
+    const best = {};
+    for (const book of mine) {
+      const row = mk.prices[book];
+      if (!row) continue;
+      for (const k of Object.keys(mk.fair_odds)) {
+        if (!(row[k] > 1)) continue;
+        const edge = row[k] / mk.fair_odds[k] - 1;
+        if (!best[k] || row[k] > best[k].odds) best[k] = { book, odds: row[k], edge };
+      }
+    }
+    let v = null;
+    for (const k of Object.keys(best)) if (best[k].edge * 100 >= thr && (!v || best[k].edge > best[v].edge)) v = k;
+    return Object.assign({}, mk, { best, value_outcome: v });
+  };
+  const adjPick = (p, st) => {
+    if (!st.myBooks || !st.myBooks.length) return p;
+    const q = adjMk(p, st.myBooks, st.threshold);
+    q.totals = adjMk(p.totals, st.myBooks, st.threshold);
+    if (p.extras) q.extras = Object.assign({}, p.extras, { btts: adjMk(p.extras.btts, st.myBooks, st.threshold), lines: (p.extras.lines || []).map(l => adjMk(l, st.myBooks, st.threshold)) });
+    return q;
+  };
+
   // Selecciones con valor del partido (cualquier mercado con precios de casas), de mayor a menor ventaja.
   const valueList = p => {
     const out = [];
@@ -703,7 +745,7 @@
     if (!picksBusy && Date.now() - picksLoadedAt > 60000 && navigator.onLine) { picksLoadedAt = Date.now(); refreshPicks(); }
     const now = Date.now(), today = L.madridDate(), tomorrow = L.addDays(today, 1), after = L.addDays(today, 2);
     // Partidos aún no empezados (los empezados ya no se pueden apostar con CLV).
-    const upcoming = (pickCache.picks || []).filter(p => new Date(p.commence_time).getTime() > now);
+    const upcoming = (pickCache.picks || []).filter(p => new Date(p.commence_time).getTime() > now).map(p => adjPick(p, st));
     const dayOf = p => L.madridDate(new Date(p.commence_time));
     const sports = Array.from(new Set(upcoming.map(p => sportOf(p.sport_key))));
     const leagues = Array.from(new Set(upcoming.filter(p => !pv.sport || sportOf(p.sport_key) === pv.sport).map(p => p.league))).sort();
@@ -928,11 +970,18 @@
     view.innerHTML = `
       <h2>STAKE</h2>
       <div class="card"><label style="margin-top:0">UNIDAD (% DEL DISPONIBLE POR NIVEL)</label>
-        <div class="row"><input id="unit" inputmode="decimal" value="${fnum(st.unit, 2)}" style="max-width:120px"><span class="muted">NIVEL 5 = 5 × ${fnum(st.unit, 2)} % = ${fnum(5 * st.unit, 2)} % DEL DISPONIBLE</span></div></div>
+        <div class="row"><input id="unit" inputmode="decimal" value="${fnum(st.unit, 2)}" style="max-width:120px"><span class="muted">NIVEL 5 = 5 × ${fnum(st.unit, 2)} % = ${fnum(5 * st.unit, 2)} % DEL DISPONIBLE</span></div>
+        <label>IMPORTE SUGERIDO · FRACCIÓN DE KELLY</label>
+        <div class="seg">${[[0.125, '⅛ PRUDENTE'], [0.25, '¼ NORMAL'], [0.5, '½ ATREVIDO']].map(([v, t]) => `<button data-kelly="${v}" class="${st.kelly === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+        <div class="muted" style="margin-top:6px">AL APUNTAR UN PICK, LA APP SUGIERE EL NIVEL SEGÚN LA VENTAJA. CUANTO MENOR LA FRACCIÓN, MÁS PEQUEÑO EL IMPORTE.</div></div>
       <h2>LÍMITES DE PÉRDIDA</h2>
       <div class="card"><div class="row"><div class="grow"><label style="margin-top:0">SEMANAL €</label><input id="lw" inputmode="decimal" value="${st.lossWeek ? fnum(st.lossWeek) : ''}" placeholder="Sin límite"></div>
         <div class="grow"><label style="margin-top:0">MENSUAL €</label><input id="lm" inputmode="decimal" value="${st.lossMonth ? fnum(st.lossMonth) : ''}" placeholder="Sin límite"></div></div>
         <div class="muted" style="margin-top:6px">SI LO SUPERAS, INICIO MUESTRA UN AVISO EN ROJO. SEMANA = LUNES A DOMINGO.</div></div>
+      <h2>MIS CASAS</h2>
+      <div class="card"><label style="margin-top:0">DÓNDE PUEDES APOSTAR · SI NO MARCAS NINGUNA SE USAN TODAS</label>
+        <div class="chips" style="flex-wrap:wrap">${BOOK_LIST.map(n => `<button type="button" data-mybook="${esc(n)}" class="${(st.myBooks || []).includes(n) ? 'on' : ''}">${esc(n)}</button>`).join('')}</div>
+        <div class="muted" style="margin-top:6px">LA MEJOR CUOTA Y EL ⭐ DE PICKS SE CALCULAN SOLO CON LAS CASAS MARCADAS. BET365 NO ENTRA EN LA BÚSQUEDA: PARA ELLA USA LA CUOTA MÍNIMA "≥" O ESCRIBE SU CUOTA AL APUNTAR. SE APLICA A LAS BÚSQUEDAS NUEVAS.</div></div>
       <h2>ESCÁNER DE PICKS</h2>
       <div class="card"><label style="margin-top:0">LIGAS · ✓ = SE BUSCA · ⭐ = ENTRA EN EL ENVÍO DIARIO</label>
         ${(st.scan || []).map((l, i) => `<div class="lg">
@@ -1013,6 +1062,12 @@
     });
     view.querySelector('#addLeague').onclick = openLeaguePicker;
     view.querySelectorAll('[data-tot]').forEach(b => b.onclick = () => saveSettings({ totals: b.dataset.tot === 'on' }));
+    view.querySelectorAll('[data-mybook]').forEach(btn => btn.onclick = () => {
+      const cur = new Set(settings().myBooks || []), n = btn.dataset.mybook;
+      if (cur.has(n)) cur.delete(n); else cur.add(n);
+      saveSettings({ myBooks: Array.from(cur) });
+    });
+    view.querySelectorAll('[data-kelly]').forEach(btn => btn.onclick = () => { saveSettings({ kelly: +btn.dataset.kelly }); toast('GUARDADO'); });
     view.querySelector('#thr').onchange = ev => { const v = pnum(ev.target.value); if (!(v >= 0)) { toast('Número no válido'); render(); return; } saveSettings({ threshold: v }); toast('GUARDADO'); };
     view.querySelectorAll('[data-sm]').forEach(b => b.onclick = () => { saveSettings({ sendMode: b.dataset.sm }); picksMode = b.dataset.sm; });
     view.querySelectorAll('[data-dv]').forEach(b => b.onclick = () => saveSettings({ devig: b.dataset.dv }));
