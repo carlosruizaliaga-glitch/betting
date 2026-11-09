@@ -259,6 +259,38 @@
     wireChart();
   }
 
+  // ---------- Ficha del partido (bloque minimalista en la apuesta hecha desde un pick) ----------
+  const scoreOf = b => b.match && b.match.ft ? `${b.match.ft[0]}–${b.match.ft[1]}` : String(b.score || '').replace('-', '–');
+  const minStr = g => `${g.m}${g.x ? '+' + g.x : ''}'`;
+  function matchCard(b) {
+    const sn = b.snap || {}, m = b.match;
+    const ev = ((b.legs && b.legs[0] && b.legs[0].event) || '').split(' – ');
+    const home = sn.home || ev[0] || '', away = sn.away || ev[1] || '';
+    const ft = m && m.ft ? m.ft : (b.score && /^\d+-\d+$/.test(b.score) ? b.score.split('-').map(Number) : null);
+    if (!home && !ft) return '';
+    const when = b.commence ? new Date(b.commence).toLocaleString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).toUpperCase().replace(/\./g, '') : '';
+    const head = ft
+      ? `<div class="mc-teams"><span class="t">${esc(home)}</span><b class="num mc-sc">${ft[0]} – ${ft[1]}</b><span class="t r">${esc(away)}</span></div>`
+      : `<div class="mc-teams"><span class="t">${esc(home)}</span><b class="mc-vs">VS</b><span class="t r">${esc(away)}</span></div>`;
+    const meta = [sn.league || b.league, ft ? (m && m.st === 'AET' ? 'FINAL TRAS PRÓRROGA' : m && m.st === 'PEN' ? 'FINAL TRAS PENALTIS' : 'FINAL') : '', m && m.ht ? `DESCANSO ${m.ht[0]}–${m.ht[1]}` : '', !ft ? when : ''].filter(Boolean).map(esc).join(' · ');
+    let goals = '';
+    if (m && m.goals && m.goals.length) {
+      const one = g => `<div class="g">${esc(minStr(g))} ${esc(g.p)}${g.k === 'p' ? ' <i>(p)</i>' : g.k === 'o' ? ' <i>(p.p.)</i>' : ''}</div>`;
+      goals = `<div class="mc-goals"><div>${m.goals.filter(g => g.t === 'h').map(one).join('')}</div><div class="r">${m.goals.filter(g => g.t === 'a').map(one).join('')}</div></div>`;
+    }
+    const row = (label, v) => !v ? '' : `<div class="mc-row"><b class="${v[0] > v[1] ? 'hi' : ''}">${v[0]}</b><span>${label}</span><b class="${v[1] > v[0] ? 'hi' : ''}">${v[1]}</b></div>`;
+    const stats = m ? row('CÓRNERS', m.corners) + row('AMARILLAS', m.yellow) + row('ROJAS', m.red) : '';
+    let probs = '';
+    if (sn.probs) {
+      const ks = ['1', 'X', '2'].filter(k => sn.probs[k] != null), tot = ks.reduce((a, k) => a + sn.probs[k], 0) || 1;
+      probs = `<div class="mc-prob"><div class="bar">${ks.map(k => `<i class="k${k}" style="width:${(sn.probs[k] / tot * 100).toFixed(1)}%"></i>`).join('')}</div>
+        <div class="lab">${ks.map(k => `<span>${k === 'X' ? 'EMPATE' : k === '1' ? '1' : '2'} <b>${fnum(sn.probs[k] * 100, 0)} %</b></span>`).join('')}</div>
+        <div class="muted" style="text-align:center">PROBABILIDAD JUSTA AL APOSTAR</div></div>`;
+    }
+    const wait = ft && !m ? '<div class="muted" style="text-align:center;margin-top:6px">GOLES, CÓRNERS Y TARJETAS APARECEN AL COMPLETARSE LA FICHA.</div>' : '';
+    return `<div class="mcard">${head}<div class="mc-meta">${meta}</div>${goals}${stats ? `<div class="mc-stats">${stats}</div>` : ''}${probs}${wait}</div>`;
+  }
+
   function pendCard(b) {
     return `<div class="pend">
       <div class="row"><div class="grow"><b class="ellipsis" style="display:block">${esc(selText(b))}</b>
@@ -368,7 +400,7 @@
       const p = L.profit(b);
       html += `<div class="item tap" data-id="${b.id}"><div class="grow"><div class="ellipsis"><b>${esc(selText(b))}</b></div>
         <div class="muted ellipsis">${esc(b.sport)} ${esc(b.type)} · ${esc(b.book)}${b.league ? ' · ' + esc(b.league) : ''}${b.tipster ? ' · ' + esc(b.tipster) : ''}${b.level ? ' · N' + b.level : ''}</div></div>
-        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${b.autoSettled ? `<div class="muted">${esc(b.score || '')} · AUTO</div>` : ''}${typeof b.clv === 'number' ? `<div class="muted">CLV <span class="${cls(b.clv)}">${spct(b.clv)}</span></div>` : b.pickId ? `<div class="muted">${b.clvMissed ? 'SIN CIERRE' : 'CLV PENDIENTE'}</div>` : ''}</div></div>`;
+        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${b.autoSettled || b.match ? `<div class="muted">${esc(scoreOf(b))}${b.autoSettled ? ' · AUTO' : ''}</div>` : ''}${typeof b.clv === 'number' ? `<div class="muted">CLV <span class="${cls(b.clv)}">${spct(b.clv)}</span></div>` : b.pickId ? `<div class="muted">${b.clvMissed ? 'SIN CIERRE' : 'CLV PENDIENTE'}</div>` : ''}</div></div>`;
     });
     if (open) html += '</div>';
     view.innerHTML = html;
@@ -390,6 +422,7 @@
       notes: '', pickId: (prefill && prefill.pickId) || null, fair: (prefill && prefill.fair) || null,
       pickOutcome: (prefill && prefill.outcome) || null, commence: (prefill && prefill.commence) || null
     };
+    if (prefill && prefill.snap) b.snap = prefill.snap;
     if (prefill && prefill.sport) b.sport = prefill.sport;
     if (prefill && prefill.type) b.type = prefill.type;
     if (prefill && prefill.pickId) { b.pickMarket = prefill.market || 'h2h'; if (prefill.point != null) b.point = prefill.point; }
@@ -400,6 +433,7 @@
       return `<div class="chips scroll-x" data-chips="${k}">${vals.map(v => `<button type="button" class="${v === b[k] ? 'on' : ''}" data-v="${esc(v)}">${esc(v)}</button>`).join('')}</div>`;
     };
     const m = sheet(`<h3>${isNew ? '+ NUEVA APUESTA' : 'EDITAR APUESTA'}</h3>
+      ${b.pickId ? matchCard(b) : ''}
       ${b.fair ? `<div class="muted">PICK · CUOTA JUSTA <b class="cyan">${odds(b.fair)}</b>${b.closingFair ? ` · CIERRE <b class="cyan">${odds(b.closingFair)}</b> · CLV <b class="${cls(b.clv)}">${spct(b.clv, 2)}</b>` : b.clvMissed ? ' · SIN CIERRE (APUNTADA CON EL PARTIDO EMPEZADO)' : b.pickId ? (b.commence && new Date(b.commence) <= new Date() ? ' · <span class="yellow">PARTIDO YA EMPEZADO: NO TENDRÁ CLV</span>' : ' · CLV AL EMPEZAR EL PARTIDO') : ''}</div>` : ''}
       <div id="legs"></div>
       <button type="button" class="small" id="addLeg" style="margin-top:2px">+ SELECCIÓN (COMBINADA)</button>
@@ -827,6 +861,7 @@
       const sp = sportOf(p.sport_key);
       openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o, market, pt != null ? +pt : null), league: p.league, fair: L.r2(mk.fair_odds[o]), pickId: p.id, outcome: o,
         commence: p.commence_time, sport: sportEmoji(p.sport_key), market, point: market === 'totals' ? +pt : null,
+        snap: { home: p.home, away: p.away, league: p.league, probs: p.fair_prob, src: p.fair_src || ['pinnacle'], at: p.captured_at },
         type: market === 'totals' ? 'Goles' : market === 'btts' ? 'Ambos marcan' : market === 'dc' ? 'Doble oportunidad' : market === 'dnb' ? 'Empate no vale' : sp === 'soccer' ? '1X2' : 'Ganador' });
     });
   }
@@ -1079,7 +1114,8 @@
       ${page('conn', `
       <h2>CONEXIÓN · THE ODDS API Y TELEGRAM</h2>
       <div class="card"><div id="conn" class="muted">PULSA COMPROBAR PARA VER EL ESTADO.</div>
-        <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button></div></div>`)}
+        <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button><button class="small" id="chkFb">COMPROBAR FÚTBOL</button></div>
+        <div class="muted" style="margin-top:8px">FÚTBOL = API-FOOTBALL: DA CÓRNERS, TARJETAS Y GOLES CON MINUTO PARA LA FICHA DE CADA APUESTA.</div></div>`)}
       ${page('data', `
       <h2>COPIA DE SEGURIDAD</h2>
       <div class="card"><div class="row" style="flex-wrap:wrap;gap:6px">
@@ -1147,6 +1183,7 @@
     };
     view.querySelector('#chk').onclick = checkConnection;
     view.querySelector('#chat').onclick = detectChat;
+    view.querySelector('#chkFb').onclick = checkFootball;
     view.querySelector('#toCash').onclick = () => go('cash');
     view.querySelector('#csvBets').onclick = exportBetsCsv;
     view.querySelector('#csvMoves').onclick = exportMovesCsv;
@@ -1243,10 +1280,20 @@
       box.innerHTML = `<div class="kv"><span>ODDS_API_KEY</span><span>${ok(r.secrets.odds)}${r.oddsError ? ' <span class="neg">' + esc(r.oddsError) + '</span>' : ''}</span></div>
         <div class="kv"><span>TELEGRAM_BOT_TOKEN</span><span>${ok(r.secrets.token)}</span></div>
         <div class="kv"><span>TELEGRAM_CHAT_ID</span><span>${ok(r.secrets.chat)}</span></div>
+        <div class="kv"><span>API_FOOTBALL_KEY <span class="muted">(OPCIONAL)</span></span><span>${r.secrets.football ? '<span class="pos">✓</span>' : '<span class="yellow">SIN CLAVE</span>'}</span></div>
         <div class="kv"><span>CRÉDITOS</span><span class="num">${creditsHtml(r.credits)}</span></div>
         ${r.autoSend ? `<div class="kv"><span>ÚLTIMO ENVÍO AUTOMÁTICO</span><span>${fdate(r.autoSend.day)}${r.autoSend.error ? ' <span class="neg">' + esc(r.autoSend.error === 'low_credits' ? 'OMITIDO: CRÉDITOS' : r.autoSend.error) + '</span>' : ''}</span></div>` : ''}
         <div class="muted" style="margin-top:6px">SECRETOS QUE VE SUPABASE: ${r.names && r.names.length ? esc(r.names.join(', ')) : 'NINGUNO'}</div>
         ${missing.length ? `<div class="muted" style="margin-top:6px">SIN COMPETICIÓN ACTIVA AHORA (NO GASTAN): ${esc(missing.join(', '))}</div>` : ''}`;
+    } catch (e) { box.innerHTML = '<span class="neg">⛔ SIN CONEXIÓN</span>'; }
+  }
+  async function checkFootball() {
+    const box = view.querySelector('#conn'); box.textContent = 'COMPROBANDO API-FOOTBALL…';
+    try {
+      const r = await S.callPicks({ action: 'football' });
+      if (r.error === 'missing_football_key') { box.innerHTML = '<span class="yellow">FALTA LA CLAVE API_FOOTBALL_KEY EN SUPABASE (VER LAS INSTRUCCIONES).</span>'; return; }
+      if (r.ok === false) { box.innerHTML = `<span class="neg">⛔ ${esc(r.error || 'ERROR')}</span><div class="muted" style="margin-top:6px">SI DICE QUE EL PLAN NO TIENE ACCESO A LA TEMPORADA, LA CUENTA GRATIS NO SIRVE PARA PARTIDOS ACTUALES.</div>`; return; }
+      box.innerHTML = `<span class="pos">✓ FUNCIONA</span> · ${r.matches} PARTIDOS DE AYER${r.left != null ? ` · QUEDAN ${r.left} CONSULTAS HOY` : ''}`;
     } catch (e) { box.innerHTML = '<span class="neg">⛔ SIN CONEXIÓN</span>'; }
   }
   async function detectChat() {

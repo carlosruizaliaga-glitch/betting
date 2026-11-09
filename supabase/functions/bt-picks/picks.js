@@ -303,6 +303,72 @@ export function finalScore(ev) {
   return Number.isFinite(home) && Number.isFinite(away) ? { home, away } : null;
 }
 
+// ---------- Ficha del partido (API-Football): marcador, descanso, goles, córners y tarjetas ----------
+// Nombres de equipo: se quitan acentos y palabras sueltas (FC, CF, club…) y se comparan por palabras.
+const TEAM_STOP = new Set(['fc', 'cf', 'cd', 'ud', 'sc', 'ac', 'as', 'afc', 'ssc', 'sv', 'fk', 'sk', 'if', 'bk', 'club', 'de', 'del', 'the', 'real', 'calcio', 'futbol', 'football']);
+const TEAM_ALIAS = { man: 'manchester', utd: 'united', spurs: 'tottenham', wolves: 'wolverhampton', atletico: 'atletico', inter: 'internazionale', psg: 'paris', 'st': 'saint' };
+export function teamTokens(name) {
+  const t = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  const out = t.map(x => TEAM_ALIAS[x] || x).filter(x => !TEAM_STOP.has(x));
+  return out.length ? out : t;
+}
+// Parecido entre dos nombres (0 a 1): palabras en común sobre las de la lista más corta.
+export function teamSim(a, b) {
+  const A = teamTokens(a), B = teamTokens(b);
+  if (!A.length || !B.length) return 0;
+  if (A.join(' ') === B.join(' ')) return 1;
+  const small = A.length <= B.length ? A : B, big = A.length <= B.length ? B : A;
+  const hit = small.filter(x => big.some(y => y === x || (x.length > 3 && y.length > 3 && (y.startsWith(x) || x.startsWith(y))))).length;
+  return hit / small.length;
+}
+// Busca el partido en la lista de /fixtures: misma hora (±45 min) y los dos equipos parecidos.
+export function findFixture(fixtures, home, away, commenceISO) {
+  const t = new Date(commenceISO).getTime();
+  let best = null;
+  for (const f of fixtures || []) {
+    const ft = new Date(f.fixture && f.fixture.date).getTime();
+    if (!isFinite(ft) || Math.abs(ft - t) > 45 * 60e3) continue;
+    const sh = teamSim(home, f.teams.home.name), sa = teamSim(away, f.teams.away.name);
+    if (sh < 0.5 || sa < 0.5) continue;
+    const score = sh + sa - Math.abs(ft - t) / 3.6e6 * 0.1;
+    if (!best || score > best.score) best = { f, score };
+  }
+  return best && best.f;
+}
+export const FIXTURE_DONE = ['FT', 'AET', 'PEN'];
+// Ficha del partido a partir del fixture, sus eventos y sus estadísticas.
+// {fid, st, ft:[h,a], ht:[h,a]|null, goals:[{m,x,t:'h'|'a',p,k:'g'|'p'|'o'}], corners, yellow, red: [h,a]|null, src, at}
+export function buildMatch(fx, events, stats) {
+  const hid = fx.teams.home.id;
+  const num = v => (v == null || v === '' ? null : +v);
+  const ftH = num(fx.score && fx.score.fulltime && fx.score.fulltime.home), ftA = num(fx.score && fx.score.fulltime && fx.score.fulltime.away);
+  const ft = ftH != null && ftA != null ? [ftH, ftA] : [num(fx.goals.home), num(fx.goals.away)];
+  const hh = num(fx.score && fx.score.halftime && fx.score.halftime.home), ha = num(fx.score && fx.score.halftime && fx.score.halftime.away);
+  let goals = (events || []).filter(e => e.type === 'Goal' && e.detail !== 'Missed Penalty')
+    .map(e => ({ m: e.time.elapsed, x: e.time.extra || 0, t: e.team && e.team.id === hid ? 'h' : 'a', p: (e.player && e.player.name) || '', k: e.detail === 'Own Goal' ? 'o' : e.detail === 'Penalty' ? 'p' : 'g' }))
+    .filter(g => g.m <= 90 || g.x >= 0).sort((a, b) => a.m + a.x / 100 - (b.m + b.x / 100));
+  // El gol en propia puerta se apunta al equipo que lo marca: si no cuadra con el marcador, se cambia de lado.
+  const count = gs => [gs.filter(g => g.t === 'h').length, gs.filter(g => g.t === 'a').length];
+  if (ft[0] != null && ft[1] != null && goals.some(g => g.k === 'o')) {
+    const c = count(goals);
+    if (c[0] !== ft[0] || c[1] !== ft[1]) {
+      const sw = goals.map(g => g.k === 'o' ? { ...g, t: g.t === 'h' ? 'a' : 'h' } : g), c2 = count(sw);
+      if (c2[0] === ft[0] && c2[1] === ft[1]) goals = sw;
+    }
+  }
+  const side = (id) => (stats || []).find(x => x.team && x.team.id === id);
+  const stat = (x, type) => { const r = x && (x.statistics || []).find(y => y.type === type); return r ? num(r.value) : null; };
+  const pair = type => { const sh = side(hid), sa = (stats || []).find(x => x.team && x.team.id !== hid); const a = stat(sh, type), b = stat(sa, type); return sh && sa ? [a == null ? 0 : a, b == null ? 0 : b] : null; };
+  const cards = type => {   // si no hay estadísticas, se cuentan en los eventos
+    const p = pair(type);
+    if (p) return p;
+    const d = type === 'Red Cards' ? 'Red Card' : 'Yellow Card', ev = (events || []).filter(e => e.type === 'Card' && e.detail === d);
+    return events && events.length ? [ev.filter(e => e.team && e.team.id === hid).length, ev.filter(e => !(e.team && e.team.id === hid)).length] : null;
+  };
+  return { fid: fx.fixture.id, st: fx.fixture.status.short, ft, ht: hh != null && ha != null ? [hh, ha] : null, goals,
+    corners: pair('Corner Kicks'), yellow: cards('Yellow Cards'), red: cards('Red Cards'), src: 'apif', at: new Date().toISOString() };
+}
+
 // Movimiento: cambio de probabilidad justa (en puntos) desde la primera captura.
 export const moveOf = (p, o) => p.first_fair_prob && p.first_fair_prob[o] != null && p.fair_prob[o] != null ? p.fair_prob[o] - p.first_fair_prob[o] : 0;
 

@@ -6,11 +6,12 @@
 //   detect_chat  → lee getUpdates del bot para encontrar tu chat_id
 //   picks        → picks guardados de las próximas horas (no gasta créditos)
 //   extras       → { pickId, confirmLow } Ambos marcan y Más/Menos 0,5, 1,5 y 3,5 de un partido (2 créditos)
+//   football     → comprueba la clave de API-Football y si da datos de la temporada actual (1 consulta)
 //   scan         → { mode: 'value'|'all', send: true, confirmLow: false }
 //                  (manual: ligas activas + Más/Menos en fútbol; auto: solo ligas ⭐ y solo ganador)
 // POST { action: 'cron', cronKey } (pg_cron cada 5 min): cuota de cierre, CLV, cierre automático y envío diario.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { BOOKS, buildPicks, buildExtras, formatMessages, pinnacleFair, closingFairFor, clv, sportOf, settleOutcome, betProfit, finalScore } from './picks.js';
+import { BOOKS, buildPicks, buildExtras, formatMessages, pinnacleFair, closingFairFor, clv, sportOf, settleOutcome, betProfit, finalScore, findFixture, buildMatch, FIXTURE_DONE } from './picks.js';
 
 const ODDS = 'https://api.the-odds-api.com/v4';
 const CACHE_MIN = 30;
@@ -289,6 +290,61 @@ async function fillClv() {
   return n;
 }
 
+// ---------- Ficha del partido (API-Football: marcador, descanso, goles con minuto, córners y tarjetas) ----------
+const APIF = 'https://v3.football.api-sports.io';
+async function apif(path: string, params: Record<string, string> = {}) {
+  const u = new URL(APIF + path);
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  const res = await fetch(u, { headers: { 'x-apisports-key': env('API_FOOTBALL_KEY') } });
+  const text = await res.text();
+  let data: any; try { data = JSON.parse(text); } catch { data = text; }
+  const e = data && data.errors;
+  const err = e && (Array.isArray(e) ? e[0] : Object.values(e)[0]);
+  const left = res.headers.get('x-ratelimit-requests-remaining');
+  return { ok: res.ok && !err, status: res.status, data, error: err ? String(err) : (res.ok ? null : 'HTTP ' + res.status), left: left != null ? +left : null };
+}
+
+// Para cada apuesta de fútbol hecha desde un pick cuyo partido ya debería haber terminado y que aún no tiene ficha:
+// busca el partido por fecha y nombres, y si está terminado guarda marcador, descanso, goles, córners y tarjetas.
+// Como mucho 3 partidos por pasada (cada uno gasta unas 3 consultas) y hasta 6 intentos por partido.
+async function fillMatch(now: Date) {
+  if (!env('API_FOOTBALL_KEY')) return null;
+  const rows = (await pickBets()).filter((r: any) => r.data.commence && !(r.data.match && r.data.match.src));
+  if (!rows.length) return null;
+  const { data: picks } = await db.from('bt_picks').select('id,sport_key,home,away,commence_time').in('id', [...new Set(rows.map((r: any) => r.data.pickId))]);
+  const pickMap = new Map((picks || []).map((p: any) => [p.id, p]));
+  const { data: stRow } = await db.from('bt_state').select('data').eq('key', 'match').maybeSingle();
+  const state = (stRow && stRow.data) || { tries: {}, last: {} };
+  state.tries = state.tries || {}; state.last = state.last || {};
+  const byDate = new Map();
+  let done = 0, calls = 0;
+  for (const r of rows) {
+    if (done >= 3) break;
+    const p: any = pickMap.get(r.data.pickId);
+    if (!p || sportOf(p.sport_key) !== 'soccer') continue;
+    const mins = (now.getTime() - new Date(p.commence_time).getTime()) / MIN;
+    if (mins < 110 || mins > 5 * 24 * 60) continue;
+    if ((state.tries[r.id] || 0) >= 6) continue;
+    if (state.last[r.id] && now.getTime() - new Date(state.last[r.id]).getTime() < 25 * MIN) continue;
+    state.tries[r.id] = (state.tries[r.id] || 0) + 1; state.last[r.id] = now.toISOString(); done++;
+    const day = p.commence_time.slice(0, 10);
+    if (!byDate.has(day)) { const f = await apif('/fixtures', { date: day }); calls++; byDate.set(day, f); }
+    const fl: any = byDate.get(day);
+    if (!fl.ok) { state.error = fl.error; continue; }
+    const fx = findFixture(fl.data.response, p.home, p.away, p.commence_time);
+    if (!fx || !FIXTURE_DONE.includes(fx.fixture.status.short)) continue;
+    const ev = await apif('/fixtures/events', { fixture: String(fx.fixture.id) });
+    const stt = await apif('/fixtures/statistics', { fixture: String(fx.fixture.id) });
+    calls += 2;
+    const match = buildMatch(fx, ev.ok ? ev.data.response : [], stt.ok ? stt.data.response : []);
+    const { error } = await db.from('bt_items').update({ data: { ...r.data, match }, updated_at: Math.max(Date.now(), r.updated_at + 1), server_ts: new Date().toISOString() })
+      .eq('id', r.id).eq('updated_at', r.updated_at);
+    if (!error) delete state.tries[r.id];
+  }
+  if (done) await db.from('bt_state').upsert({ key: 'match', data: state, updated_at: now.toISOString() });
+  return { checked: done, calls };
+}
+
 // Cierre automático: apuestas pendientes hechas desde picks cuyo partido ya debería haber terminado.
 // /scores con daysFrom cuesta 2 créditos por consulta: como mucho una por liga cada 30 min y 8 intentos por partido.
 const SETTLE_AFTER_MIN: Record<string, number> = { soccer: 115, basketball: 150, tennis: 90 };
@@ -308,9 +364,29 @@ async function autoSettle(now: Date) {
   const state = (stRow && stRow.data) || { last: {}, tries: {} };
   state.last = state.last || {}; state.tries = state.tries || {};
 
+  const done: string[] = [];
+  const settleRow = async (r: any, fs: { home: number; away: number }) => {
+    const d = r.data, market = d.pickMarket || 'h2h';
+    const result = settleOutcome(market, d.pickOutcome, fs.home, fs.away, d.point != null ? +d.point : NaN);
+    if (!result) return;
+    const data = { ...d, result, closedAt: now.getTime(), autoSettled: true, score: `${fs.home}-${fs.away}` };
+    const { error } = await db.from('bt_items').update({ data, updated_at: Math.max(Date.now(), r.updated_at + 1), server_ts: new Date().toISOString() })
+      .eq('id', r.id).eq('updated_at', r.updated_at);
+    if (error) return;
+    const sel = (d.legs && d.legs[0] && d.legs[0].sel) || '', ev2 = (d.legs && d.legs[0] && d.legs[0].event) || '';
+    done.push(`${RESULT_ES[result] || result} · ${sel}${ev2 ? ` (${ev2} · ${fs.home}-${fs.away})` : ''} · ${eur(betProfit(result, d.stake, d.odds, d.bonus))}`);
+  };
+  // Si la ficha del partido (API-Football) ya trae el resultado final, se cierra con ella y no se gastan créditos de The Odds API.
+  const rest: any[] = [];
+  for (const r of pend) {
+    const m = r.data.match;
+    if (m && m.ft && m.ft[0] != null && m.ft[1] != null && FIXTURE_DONE.includes(m.st)) await settleRow(r, { home: m.ft[0], away: m.ft[1] });
+    else rest.push(r);
+  }
+
   // Partidos que ya deberían haber terminado, agrupados por liga.
   const bySport = new Map();
-  for (const r of pend) {
+  for (const r of rest) {
     const p: any = pickMap.get(r.data.pickId);
     if (!p) continue;
     const mins = (now.getTime() - new Date(r.data.commence).getTime()) / MIN;
@@ -320,7 +396,6 @@ async function autoSettle(now: Date) {
     bySport.get(p.sport_key).push(r);
   }
   let calls = 0;
-  const done: string[] = [];
   for (const [sportKey, rows] of bySport) {
     const last = state.last[sportKey];
     if (last && now.getTime() - new Date(last).getTime() < SETTLE_EVERY_MIN * MIN) continue;
@@ -334,17 +409,7 @@ async function autoSettle(now: Date) {
       const ev: any = evMap.get(id), fs = finalScore(ev);
       if (!fs) { state.tries[id] = (state.tries[id] || 0) + 1; continue; }
       delete state.tries[id];
-      for (const r of rows.filter((x: any) => x.data.pickId === id)) {
-        const d = r.data, market = d.pickMarket || 'h2h';
-        const result = settleOutcome(market, d.pickOutcome, fs.home, fs.away, d.point != null ? +d.point : NaN);
-        if (!result) continue;
-        const data = { ...d, result, closedAt: now.getTime(), autoSettled: true, score: `${fs.home}-${fs.away}` };
-        const { error } = await db.from('bt_items').update({ data, updated_at: Math.max(Date.now(), r.updated_at + 1), server_ts: new Date().toISOString() })
-          .eq('id', r.id).eq('updated_at', r.updated_at);
-        if (error) continue;
-        const sel = (d.legs && d.legs[0] && d.legs[0].sel) || '', ev2 = (d.legs && d.legs[0] && d.legs[0].event) || '';
-        done.push(`${RESULT_ES[result] || result} · ${sel}${ev2 ? ` (${ev2} · ${fs.home}-${fs.away})` : ''} · ${eur(betProfit(result, d.stake, d.odds, d.bonus))}`);
-      }
+      for (const r of rows.filter((x: any) => x.data.pickId === id)) await settleRow(r, fs);
     }
   }
   if (calls) {
@@ -390,7 +455,7 @@ Deno.serve(async req => {
     if (!k || !body.cronKey || body.cronKey !== k.data.key) return json({ error: 'bad_cron' }, 401);
     try {
       const now = new Date();
-      return json({ ok: true, closing: await captureClosing(now), clv: await fillClv(), settle: await autoSettle(now), auto: await autoSend(now) });
+      return json({ ok: true, closing: await captureClosing(now), clv: await fillClv(), match: await fillMatch(now), settle: await autoSettle(now), auto: await autoSend(now) });
     } catch (e) {
       console.error(e);
       return json({ error: 'server', message: String((e && (e as Error).message) || e) }, 500);
@@ -404,7 +469,7 @@ Deno.serve(async req => {
   try {
     switch (body.action) {
       case 'status': {
-        const secrets = { odds: !!env('ODDS_API_KEY'), token: !!env('TELEGRAM_BOT_TOKEN'), chat: !!env('TELEGRAM_CHAT_ID') };
+        const secrets = { odds: !!env('ODDS_API_KEY'), token: !!env('TELEGRAM_BOT_TOKEN'), chat: !!env('TELEGRAM_CHAT_ID'), football: !!env('API_FOOTBALL_KEY') };
         let sports: string[] | null = null, sportsInfo: any[] | null = null, oddsError = null;
         if (secrets.odds) {
           const r = await oddsGet('/sports', {}); // no gasta créditos
@@ -436,6 +501,13 @@ Deno.serve(async req => {
         return json(await scan(body));
       case 'extras':
         return json(await extras(body));
+      case 'football': {
+        // Comprueba la clave y si el plan da datos de la temporada actual: pide los partidos de ayer (1 consulta).
+        if (!env('API_FOOTBALL_KEY')) return json({ error: 'missing_football_key' });
+        const day = new Date(Date.now() - 86400e3).toISOString().slice(0, 10);
+        const f = await apif('/fixtures', { date: day });
+        return json({ ok: f.ok, error: f.error, day, matches: f.ok && Array.isArray(f.data.response) ? f.data.response.length : null, left: f.left });
+      }
       default:
         return json({ error: 'unknown_action' }, 400);
     }

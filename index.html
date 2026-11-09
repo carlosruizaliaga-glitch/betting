@@ -195,6 +195,23 @@
     .mrow em { display: block; font: normal 400 10.5px/1.4 var(--mono); letter-spacing: .02em; color: var(--muted); margin-top: 2px; }
     .mrow .chev { color: var(--faint); font-size: 18px; }
     [hidden] { display: none !important; }
+    .mcard { margin: 6px 0 4px; padding: 12px 12px 10px; border: 1px solid var(--line); border-radius: var(--r); background: linear-gradient(180deg, var(--card), var(--card2)); }
+    .mc-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
+    .mc-teams .t { font: 600 13px/1.25 var(--sans); overflow: hidden; text-overflow: ellipsis; }
+    .mc-teams .t.r { text-align: right; }
+    .mc-sc { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+    .mc-vs { font: 600 11px var(--mono); color: var(--faint); letter-spacing: .12em; }
+    .mc-meta { margin-top: 4px; text-align: center; font: 500 10px/1.4 var(--mono); letter-spacing: .08em; color: var(--muted); }
+    .mc-goals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line2); font: 400 11px/1.6 var(--mono); color: var(--text); }
+    .mc-goals .r { text-align: right; } .mc-goals i { font-style: normal; color: var(--muted); }
+    .mc-stats { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line2); }
+    .mc-row { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; padding: 3px 0; font: 400 11px/1.4 var(--mono); }
+    .mc-row span { text-align: center; color: var(--muted); letter-spacing: .1em; font-size: 9.5px; }
+    .mc-row b { font-weight: 500; color: var(--muted); } .mc-row b:last-child { text-align: right; } .mc-row b.hi { color: var(--text); font-weight: 700; }
+    .mc-prob { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line2); }
+    .mc-prob .bar { display: flex; height: 4px; border-radius: 4px; overflow: hidden; gap: 2px; }
+    .mc-prob .bar i { display: block; background: var(--faint); } .mc-prob .bar i.k1 { background: var(--pos); } .mc-prob .bar i.k2 { background: var(--cyan); }
+    .mc-prob .lab { display: flex; justify-content: space-between; margin-top: 5px; font: 400 10px var(--mono); color: var(--muted); } .mc-prob .lab b { color: var(--text); font-weight: 500; }
     .sugg { margin-top: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card2); font: 500 11px/1.6 var(--mono); letter-spacing: .02em; }
     .sugg button { margin-left: 6px; padding: 3px 10px; }
     .pksec { font: 600 10px/1 var(--mono); letter-spacing: .1em; color: var(--muted); margin: 14px 2px 0; }
@@ -229,9 +246,9 @@
     <button data-tab="stats"><span class="ic">📈</span>STATS</button>
     <button data-tab="settings"><span class="ic">⚙</span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=25"></script>
-  <script src="logic.js?v=25"></script>
-  <script src="store.js?v=25"></script>
-  <script src="app.js?v=25"></script>
+  <script src="version.js?v=26"></script>
+  <script src="logic.js?v=26"></script>
+  <script src="store.js?v=26"></script>
+  <script src="app.js?v=26"></script>
 </body>
 </html>
