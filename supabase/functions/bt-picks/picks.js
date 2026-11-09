@@ -25,11 +25,23 @@ export const sportOf = key => String(key || '').split('_')[0];
 // Quita el margen a un conjunto de cuotas {resultado: cuota}.
 // "mult": proporcional (p = (1/c) / Σ(1/c)).
 // "power": p = (1/c)^k con k tal que Σp = 1; carga más margen a los no favoritos.
+// "shin": supone una fracción z de apostantes informados; p_i = (√(z² + 4(1−z)·q_i²/S) − z) / (2(1−z)), con z tal que Σp = 1.
 export function devig(odds, method) {
   const keys = sortKeys(Object.keys(odds));
   const inv = keys.map(o => 1 / odds[o]);
   let p;
-  if (method === 'mult') {
+  if (method === 'shin') {
+    const S = inv.reduce((a, b) => a + b, 0);
+    const f = z => inv.map(q => (Math.sqrt(z * z + 4 * (1 - z) * q * q / S) - z) / (2 * (1 - z)));
+    let lo = 0, hi = 0.4;
+    for (let i = 0; i < 60; i++) {
+      const z = (lo + hi) / 2;
+      if (f(z).reduce((a, b) => a + b, 0) > 1) lo = z; else hi = z;
+    }
+    p = f((lo + hi) / 2);
+    const t = p.reduce((a, b) => a + b, 0);
+    p = p.map(x => x / t);
+  } else if (method === 'mult') {
     const s = inv.reduce((a, b) => a + b, 0);
     p = inv.map(x => x / s);
   } else {
@@ -358,7 +370,7 @@ export function formatMessages(picks, { mode = 'value', threshold = 3, method = 
     .sort((a, b) => a.league.localeCompare(b.league) || a.commence_time.localeCompare(b.commence_time));
   const n = analyzed != null ? analyzed : picks.length;
   const head = `<b>🔥 PICKS · PRECIO JUSTO SIN MARGEN</b>\n` +
-    `${mode === 'all' ? 'Todos los partidos' : `Solo ⭐ valor ≥ +${dec(threshold, threshold % 1 ? 1 : 0)}%`} · ${list.length}/${n} · 72 h · ${method === 'mult' ? 'proporcional' : 'power'}`;
+    `${mode === 'all' ? 'Todos los partidos' : `Solo ⭐ valor ≥ +${dec(threshold, threshold % 1 ? 1 : 0)}%`} · ${list.length}/${n} · 72 h · ${method === 'mult' ? 'proporcional' : method === 'shin' ? 'Shin' : 'power'}`;
   if (!list.length) return [head + `\n\nSin partidos ${mode === 'all' ? '' : 'con valor '}en las próximas 72 h.`];
   const blocks = [];
   let lastHdr = null;

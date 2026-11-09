@@ -13,6 +13,15 @@ assert(p['1'] > m['1'] && p['X'] < m['X']);   // power: el favorito sube, los no
 const two = devig({ '1': 1.5, '2': 2.7 }, 'power');
 assert(close(sum(two), 1) && Object.keys(two).join() === '1,2');
 
+// ---------- Método de Shin ----------
+const sh = devig(pin, 'shin');
+assert(close(sum(sh), 1));
+assert(sh['2'] < m['2'] && sh['1'] > m['1']);   // como power: el no favorito baja y el favorito sube frente al proporcional
+const shTwo = devig({ '1': 1.5, '2': 2.7 }, 'shin');
+assert(close(sum(shTwo), 1) && shTwo['1'] > 0.5);
+const noMargin = devig({ '1': 2, '2': 2 }, 'shin');   // sin margen: no cambia nada
+assert(close(noMargin['1'], 0.5, 1e-6));
+
 // ---------- Fútbol 1X2 ----------
 const h2hBook = (key, h, a, o) => ({ key, markets: [{ key: 'h2h', outcomes: [{ name: h, price: o[0] }, { name: 'Draw', price: o[1] }, { name: a, price: o[2] }] }] });
 const totBook = (key, point, over, under) => ({ key: 'totals', outcomes: [{ name: 'Over', price: over, point }, { name: 'Under', price: under, point }] });

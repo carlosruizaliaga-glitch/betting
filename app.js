@@ -589,16 +589,22 @@
   };
 
   // Selecciones con valor del partido (cualquier mercado con precios de casas), de mayor a menor ventaja.
+  // Cada punto que sube la probabilidad justa desde la primera búsqueda cuenta como medio punto de ventaja al ordenar.
+  const MOVE_W = 0.5;
   const valueList = p => {
     const out = [];
     const add = (mk, market, point) => {
-      if (mk && mk.value_outcome && mk.best && mk.best[mk.value_outcome]) out.push({ label: OUT_NAME(p, mk.value_outcome, market, point), edge: mk.best[mk.value_outcome].edge });
+      if (mk && mk.value_outcome && mk.best && mk.best[mk.value_outcome]) {
+        const edge = mk.best[mk.value_outcome].edge, move = market === 'h2h' ? moveOf(p, mk.value_outcome) : 0;
+        out.push({ label: OUT_NAME(p, mk.value_outcome, market, point), edge, move, score: edge * 100 + MOVE_W * move * 100 });
+      }
     };
     add(p, 'h2h'); add(p.totals, 'totals', p.totals && p.totals.point);
     if (p.extras) { add(p.extras.btts, 'btts'); (p.extras.lines || []).forEach(l => add(l, 'totals', l.point)); }
-    return out.sort((a, b) => b.edge - a.edge);
+    return out.sort((a, b) => b.score - a.score);
   };
   const pickHasValue = p => valueList(p).length > 0;
+  const pickScore = p => { const v = valueList(p); return v.length ? v[0].score : bestEdge(p) * 100 - 1000; };
   const minB365 = (fair, thr) => Math.ceil(fair * (1 + thr / 100) * 100 - 1e-9) / 100;
   // Cambio de probabilidad justa (en puntos) desde la primera captura del partido.
   const moveOf = (p, o) => p.first_fair_prob && p.first_fair_prob[o] != null && p.fair_prob[o] != null ? p.fair_prob[o] - p.first_fair_prob[o] : 0;
@@ -755,7 +761,7 @@
       (!pv.day || (pv.day === 'later' ? dayOf(p) >= after : dayOf(p) === pv.day)));
     const list = filtered.filter(p => picksMode === 'all' || pickHasValue(p))
       .sort(pv.sort === 'time' ? (a, b) => a.commence_time.localeCompare(b.commence_time) || a.league.localeCompare(b.league)
-        : (a, b) => (pickHasValue(b) - pickHasValue(a)) || bestEdge(b) - bestEdge(a) || a.commence_time.localeCompare(b.commence_time));
+        : (a, b) => (pickHasValue(b) - pickHasValue(a)) || pickScore(b) - pickScore(a) || a.commence_time.localeCompare(b.commence_time));
     // Apuestas que ya tienes en cada partido (para no repetir).
     const mine = {};
     bets().forEach(b => { if (b.pickId) (mine[b.pickId] = mine[b.pickId] || []).push(b); });
@@ -795,7 +801,7 @@
           <div class="grow" style="min-width:0"><div class="ellipsis"><b>${esc(p.home)} – ${esc(p.away)}</b></div>
             <div class="muted ellipsis">${when} · ${sportEmoji(p.sport_key)} ${esc(p.league)}</div></div>
           ${my.length ? `<span class="tag mine" title="Ya apostado">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO</span>` : ''}
-          ${ve != null ? `<span class="tag P pktag" title="${esc(vl[0].label)}">⭐ ${esc(vl[0].label.length > 12 ? vl[0].label.slice(0, 11) + '…' : vl[0].label)} +${fnum(ve * 100, 0)}%</span>` : ''}
+          ${ve != null ? `<span class="tag P pktag" title="${esc(vl[0].label)}">⭐ ${esc(vl[0].label.length > 12 ? vl[0].label.slice(0, 11) + '…' : vl[0].label)} +${fnum(ve * 100, 0)}%${Math.abs(vl[0].move) >= 0.02 ? (vl[0].move > 0 ? ' ↑' : ' ↓') + Math.round(Math.abs(vl[0].move) * 100) : ''}</span>` : ''}
           <span class="muted">${open ? '▲' : '▼'}</span>
         </div>
         ${open ? pickDetail(p, st.threshold) +
@@ -803,7 +809,7 @@
           : pickCells(p, p, 'h2h', st.threshold, true) + (p.totals ? pickCells(p, p.totals, 'totals', st.threshold, true) : '')}
       </div>`;
     });
-    html += `<div class="muted" style="margin:10px 0">≥ = CUOTA MÍNIMA DE BET365 PARA QUE HAYA VALOR. ↑↓ = CAMBIO DE PROBABILIDAD DESDE LA PRIMERA BÚSQUEDA. TOCA UNA CASILLA PARA APUNTAR; TOCA EL PARTIDO PARA VER CASAS Y CUOTAS. LOS PARTIDOS EMPEZADOS NO SE MUESTRAN.</div>`;
+    html += `<div class="muted" style="margin:10px 0">≥ = CUOTA MÍNIMA DE BET365 PARA QUE HAYA VALOR. ↑↓ = CAMBIO DE PROBABILIDAD DESDE LA PRIMERA BÚSQUEDA (EN "VALOR" SE ORDENA POR VENTAJA + MOVIMIENTO: SI EL MERCADO SE MUEVE A TU FAVOR, SUBE). TOCA UNA CASILLA PARA APUNTAR; TOCA EL PARTIDO PARA VER CASAS Y CUOTAS. LOS PARTIDOS EMPEZADOS NO SE MUESTRAN.</div>`;
     view.innerHTML = html;
     view.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { picksMode = b.dataset.pm; render(); });
     view.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => { pv[b.dataset.pf] = b.dataset.v; savePv(); render(); });
@@ -835,6 +841,14 @@
       ${list.map(r => `<tr><td class="ellipsis" style="max-width:120px">${esc(r.key)}</td><td class="num">${r.n}</td>
         <td class="num ${cls(r.avg)}">${r.n ? spct(r.avg, 1) : '—'}</td><td class="num">${r.n ? pct(r.pos, 0) : '—'}</td>
         <td class="num ${cls(r.profit)}">${r.n ? (r.profit > 0 ? '+' : '') + fnum(r.profit) : '—'}</td><td class="num ${cls(r.yield)}">${r.n ? spct(r.yield, 0) : '—'}</td></tr>`).join('')}</table>`;
+  }
+
+  // Tabla de fiabilidad de la cuota justa: n, error medio y sesgo (en puntos de probabilidad).
+  function driftTable(rows) {
+    if (!rows.length) return '<div class="muted">SIN APUESTAS CON CIERRE TODAVÍA</div>';
+    return `<table class="tbl"><tr><th></th><th>N</th><th>ERROR</th><th>SESGO</th></tr>
+      ${rows.map(r => `<tr><td class="ellipsis" style="max-width:130px">${esc(r.key)}</td><td class="num">${r.n}</td>
+        <td class="num ${r.error > 0.03 ? 'yellow' : ''}">${fnum(r.error * 100, 1)} pt</td><td class="num">${r.bias > 0 ? '+' : ''}${fnum(r.bias * 100, 1)} pt</td></tr>`).join('')}</table>`;
   }
 
   function renderStats() {
@@ -883,7 +897,15 @@
       <h2>CLV POR LIGA</h2>
       <div class="card">${clvTable(L.clvBy(bs, b => b.league))}</div>
       <h2>CLV POR MERCADO</h2>
-      <div class="card">${clvTable(L.clvBy(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>` : ''}
+      <div class="card">${clvTable(L.clvBy(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>
+      <h2>CLV SEGÚN LO PRONTO QUE APUESTAS</h2>
+      <div class="card">${clvTable(L.clvBy(bs, L.hourBucket, L.HOUR_KEYS), true)}
+        <div class="muted" style="margin-top:6px">HORAS QUE FALTABAN PARA EL PARTIDO AL APUNTAR LA APUESTA. SI UN TRAMO TIENE MEJOR CLV, ESE ES TU MEJOR MOMENTO. CON POCAS APUESTAS ES SOLO UNA PISTA.</div></div>
+      <h2>FIABILIDAD DE LA CUOTA JUSTA</h2>
+      <div class="card"><div class="muted" style="margin-bottom:6px">CUÁNTO CAMBIÓ LA PROBABILIDAD JUSTA ENTRE EL PICK Y EL CIERRE. ERROR BAJO = EL PRECIO JUSTO YA ERA FIABLE; SESGO = HACIA DÓNDE SE MOVIÓ EN MEDIA.</div>
+        ${driftTable(L.fairDrift(bs, b => b.league))}
+        <div class="muted" style="margin:10px 0 6px">POR MERCADO</div>
+        ${driftTable(L.fairDrift(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>` : ''}
       <h2>PICOS Y CAÍDAS · BENEFICIO ACUMULADO</h2>
       <div class="card">
         ${kv('ACTUAL', `<span class="${cls(pk.current)}">${seur(pk.current)}</span>`)}
@@ -1037,8 +1059,8 @@
       <div class="card"><label style="margin-top:0">UMBRAL DE VALOR %</label><input id="thr" inputmode="decimal" value="${fnum(st.threshold, st.threshold % 1 ? 1 : 0)}" style="max-width:120px">
         <div class="muted" style="margin-top:6px">UN PICK CUENTA COMO ⭐ SI LA MEJOR CUOTA SUPERA LA JUSTA EN ESTE PORCENTAJE O MÁS.</div>
         <label>QUITAR EL MARGEN (PINNACLE Y BETFAIR)</label>
-        <div class="seg"><button data-dv="power" class="${st.devig !== 'mult' ? 'on' : ''}">POWER</button><button data-dv="mult" class="${st.devig === 'mult' ? 'on' : ''}">PROPORCIONAL</button></div>
-        <div class="muted" style="margin-top:6px">PROPORCIONAL REPARTE EL MARGEN A PARTES IGUALES; POWER CARGA MÁS MARGEN A LOS NO FAVORITOS, QUE ES DONDE LAS CASAS LO PONEN DE VERDAD.</div></div>`)}
+        <div class="seg"><button data-dv="power" class="${st.devig !== 'mult' && st.devig !== 'shin' ? 'on' : ''}">POWER</button><button data-dv="shin" class="${st.devig === 'shin' ? 'on' : ''}">SHIN</button><button data-dv="mult" class="${st.devig === 'mult' ? 'on' : ''}">PROPORC.</button></div>
+        <div class="muted" style="margin-top:6px">PROPORCIONAL REPARTE EL MARGEN A PARTES IGUALES; POWER Y SHIN CARGAN MÁS MARGEN A LOS NO FAVORITOS, QUE ES DONDE LAS CASAS LO PONEN DE VERDAD. SHIN SUPONE QUE PARTE DE LOS APOSTANTES SABE MÁS QUE LA CASA.</div></div>`)}
       ${page('auto', `
       <h2>ENVÍO AUTOMÁTICO DIARIO</h2>
       <div class="card"><div class="row"><div class="grow"><div class="seg"><button data-auto="off" class="${!(st.autoSend && st.autoSend.on) ? 'on' : ''}">APAGADO</button><button data-auto="on" class="${st.autoSend && st.autoSend.on ? 'on' : ''}">ENCENDIDO</button></div></div>

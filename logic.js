@@ -190,6 +190,25 @@
     return Object.keys(g).map(row).sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
   }
 
+  // Horas que faltaban para el partido cuando se apuntó la apuesta (null si no se sabe).
+  const hoursBefore = b => {
+    const t = b.commence ? new Date(b.commence).getTime() : NaN;
+    return b.created && isFinite(t) ? (t - b.created) / 3600e3 : null;
+  };
+  const HOUR_KEYS = ['MÁS DE 24 H', '6–24 H', '1–6 H', 'MENOS DE 1 H'];
+  const hourBucket = b => { const h = hoursBefore(b); return h == null ? null : h >= 24 ? HOUR_KEYS[0] : h >= 6 ? HOUR_KEYS[1] : h >= 1 ? HOUR_KEYS[2] : HOUR_KEYS[3]; };
+
+  // Fiabilidad de la cuota justa: cuánto cambió la probabilidad justa entre el momento de apostar y el cierre (en puntos).
+  // error = media del valor absoluto; sesgo = media con signo (positivo: el mercado acabó viendo la selección más probable).
+  function fairDrift(bets, keyFn) {
+    const g = {};
+    bets.filter(b => b.fair > 1 && b.closingFair > 1).forEach(b => { const k = keyFn(b) || '—'; (g[k] = g[k] || []).push(1 / b.closingFair - 1 / b.fair); });
+    return Object.keys(g).map(k => {
+      const d = g[k], n = d.length;
+      return { key: k, n, error: d.reduce((s, x) => s + Math.abs(x), 0) / n, bias: d.reduce((s, x) => s + x, 0) / n };
+    }).sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
+  }
+
   // Ventaja sobre la cuota justa en el momento de apostar (cuota / justa del pick − 1).
   const edgeAtBet = b => b.fair > 1 && b.odds > 1 ? b.odds / b.fair - 1 : null;
 
@@ -211,6 +230,6 @@
 
   const L = { r2, RESULTS, isClosed, risk, payout, potential, profit, comboOdds, byTime, madridDate, addDays, weekStart,
     funds, stakeFor, suggestStake, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
-    clvBy, edgeAtBet, clvSeries };
+    clvBy, edgeAtBet, clvSeries, hoursBefore, hourBucket, HOUR_KEYS, fairDrift };
   if (typeof module !== 'undefined') module.exports = L; else root.Logic = L;
 })(typeof window !== 'undefined' ? window : globalThis);

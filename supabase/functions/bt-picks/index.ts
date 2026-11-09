@@ -74,7 +74,7 @@ async function settings() {
     totals: s.totals !== false,
     threshold: s.threshold != null ? +s.threshold : 3,
     sendMode: s.sendMode === 'all' ? 'all' : 'value',
-    devig: s.devig === 'mult' ? 'mult' : 'power'
+    devig: s.devig === 'mult' || s.devig === 'shin' ? s.devig : 'power'
   };
 }
 
