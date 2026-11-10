@@ -21,8 +21,14 @@
     s[0] = s[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     return (neg ? '−' : '') + s.join(',');
   }
-  const eur = x => fnum(x) + ' €';
-  const seur = x => (x > 0 ? '+' : '') + eur(x);
+  // Ocultar importes (botón del ojo en la cabecera): para enseñar la app sin que se vean los dineros. Se recuerda en este móvil.
+  let hideMoney = false;
+  try { hideMoney = localStorage.getItem('betting.hide') === '1'; } catch (e) { /* sin almacenamiento */ }
+  document.body.classList.toggle('hide-amt', hideMoney);
+  const MASK = '••••';
+  const mny = x => hideMoney ? MASK : fnum(x);
+  const eur = x => hideMoney ? MASK : fnum(x) + ' €';
+  const seur = x => hideMoney ? MASK : (x > 0 ? '+' : '') + eur(x);
   const pct = (x, dec) => x == null ? '—' : fnum(x * 100, dec == null ? 1 : dec) + ' %';
   const spct = (x, dec) => x == null ? '—' : (x > 0 ? '+' : '') + pct(x, dec);
   const odds = x => fnum(x, 2);
@@ -136,6 +142,23 @@
     if (t !== tab) { tab = t; render(); window.scrollTo(0, 0); }
   });
   document.getElementById('fab').addEventListener('click', () => openBet());
+  const eyeBtn = document.getElementById('eyeBtn');
+  const EYE_ON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/></svg>';
+  function paintEye() {
+    eyeBtn.innerHTML = hideMoney ? EYE_OFF : EYE_ON;
+    eyeBtn.classList.toggle('on', hideMoney);
+    eyeBtn.setAttribute('aria-label', hideMoney ? 'Mostrar importes' : 'Ocultar importes');
+    eyeBtn.title = hideMoney ? 'Mostrar importes' : 'Ocultar importes';
+  }
+  paintEye();
+  eyeBtn.addEventListener('click', () => {
+    hideMoney = !hideMoney;
+    try { localStorage.setItem('betting.hide', hideMoney ? '1' : '0'); } catch (e) { /* sin almacenamiento */ }
+    document.body.classList.toggle('hide-amt', hideMoney);
+    paintEye(); toast(hideMoney ? 'IMPORTES OCULTOS' : 'IMPORTES VISIBLES');
+    const y = window.scrollY; render(); window.scrollTo(0, y);
+  });
   document.getElementById('syncBtn').addEventListener('click', () => { S.syncNow(); toast('Sincronizando…'); });
 
   function renderHeader() {
@@ -351,7 +374,7 @@
   }
   function bankChart(series) {
     const col = series.length && series[series.length - 1].value >= series[0].value ? 'var(--pos)' : 'var(--neg)';
-    return lineChart(series, { id: 'bank', label: 'Evolución del bank', axis: v => fnum(v), color: col, area: true,
+    return lineChart(series, { id: 'bank', label: 'Evolución del bank', axis: v => mny(v), color: col, area: true,
       tip: p => `${fdate(p.date)} · <b>${eur(p.value)}</b>${p.bet ? `<br>${esc(selText(p.bet))} <span class="${cls(p.delta)}">${seur(p.delta)}</span>` : `<br>CAJA ${seur(p.delta)}`}` });
   }
   function wireChart() {
@@ -438,12 +461,12 @@
       <div id="legs"></div>
       <button type="button" class="small" id="addLeg" style="margin-top:2px">+ SELECCIÓN (COMBINADA)</button>
       <label>NIVEL DE STAKE · DISPONIBLE ${eur(avail)} · UNIDAD ${fnum(st.unit, 2).replace(/,00$/, '')} %</label>
-      <div class="levels" id="levels">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<button type="button" data-l="${n}" class="${b.level === n ? 'on' : ''}"><b>${n}</b><span>${fnum(L.stakeFor(avail, n, st.unit))}</span></button>`).join('')}</div>
-      <div class="row" style="margin-top:6px"><div class="grow"><label style="margin-top:4px">STAKE €</label><input id="stake" inputmode="decimal" value="${b.stake != null ? fnum(b.stake) : ''}" placeholder="0,00"></div>
+      <div class="levels" id="levels">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<button type="button" data-l="${n}" class="${b.level === n ? 'on' : ''}"><b>${n}</b><span>${mny(L.stakeFor(avail, n, st.unit))}</span></button>`).join('')}</div>
+      <div class="row" style="margin-top:6px"><div class="grow"><label style="margin-top:4px">STAKE €</label><input id="stake" class="mny-in" inputmode="decimal" value="${b.stake != null ? fnum(b.stake) : ''}" placeholder="0,00"></div>
         <div class="grow"><label style="margin-top:4px">FECHA</label><input id="date" type="date" value="${esc(b.date)}"></div></div>
       <label>RESULTADO</label>
       <div class="res" id="res">${Object.keys(L.RESULTS).map(r => `<button type="button" data-r="${r}" class="${b.result === r ? 'on' : ''}">${r === 'P' ? 'PEND.' : L.RESULTS[r].label}</button>`).join('')}</div>
-      <div id="coBox" style="display:none"><label>IMPORTE COBRADO EN CASH OUT €</label><input id="co" inputmode="decimal" value="${b.cashout != null ? fnum(b.cashout) : ''}"></div>
+      <div id="coBox" style="display:none"><label>IMPORTE COBRADO EN CASH OUT €</label><input id="co" class="mny-in" inputmode="decimal" value="${b.cashout != null ? fnum(b.cashout) : ''}"></div>
       <div class="preview num" id="preview"></div>
       <div class="sugg" id="sugg" style="display:none"></div>
       <label>CASA</label>${chips('book', st.books)}
@@ -875,7 +898,7 @@
     return `<table class="tbl"><tr><th></th><th>N</th><th>CLV</th><th>CLV+</th><th>BENEF.</th><th>YIELD</th></tr>
       ${list.map(r => `<tr><td class="ellipsis" style="max-width:120px">${esc(r.key)}</td><td class="num">${r.n}</td>
         <td class="num ${cls(r.avg)}">${r.n ? spct(r.avg, 1) : '—'}</td><td class="num">${r.n ? pct(r.pos, 0) : '—'}</td>
-        <td class="num ${cls(r.profit)}">${r.n ? (r.profit > 0 ? '+' : '') + fnum(r.profit) : '—'}</td><td class="num ${cls(r.yield)}">${r.n ? spct(r.yield, 0) : '—'}</td></tr>`).join('')}</table>`;
+        <td class="num ${cls(r.profit)}">${r.n ? (r.profit > 0 ? '+' : '') + mny(r.profit) : '—'}</td><td class="num ${cls(r.yield)}">${r.n ? spct(r.yield, 0) : '—'}</td></tr>`).join('')}</table>`;
   }
 
   // Tabla de fiabilidad de la cuota justa: n, error medio y sesgo (en puntos de probabilidad).
@@ -955,8 +978,8 @@
       <h2>RENDIMIENTO POR</h2>
       <div class="chips scroll-x">${Object.keys(byOpts).map(k => `<button data-by="${k}" class="${k === statsBy ? 'on' : ''}">${byOpts[k]}</button>`).join('')}</div>
       <div class="card"><table class="tbl"><tr><th></th><th>N</th><th>APOST.</th><th>BENEF.</th><th>YIELD</th><th>ACIERTO</th></tr>
-        ${groups.map(g => `<tr><td class="ellipsis" style="max-width:110px">${esc(g.key)}</td><td class="num">${g.n}</td><td class="num">${fnum(g.risk)}</td>
-          <td class="num ${cls(g.profit)}">${g.profit > 0 ? '+' : ''}${fnum(g.profit)}</td><td class="num ${cls(g.yield)}">${spct(g.yield, 0)}</td><td class="num">${pct(g.winPct, 0)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">SIN DATOS</td></tr>'}</table></div>
+        ${groups.map(g => `<tr><td class="ellipsis" style="max-width:110px">${esc(g.key)}</td><td class="num">${g.n}</td><td class="num">${mny(g.risk)}</td>
+          <td class="num ${cls(g.profit)}">${g.profit > 0 ? '+' : ''}${mny(g.profit)}</td><td class="num ${cls(g.yield)}">${spct(g.yield, 0)}</td><td class="num">${pct(g.winPct, 0)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">SIN DATOS</td></tr>'}</table></div>
       <h2>CAJA</h2>
       <div class="card">
         ${kv('DEPÓSITOS', eur(f.deposits))}${kv('RETIRADAS', eur(f.withdrawals))}${kv('DEPÓSITOS NETOS', eur(f.net))}
@@ -976,8 +999,8 @@
     view.innerHTML = `<div class="row" style="margin-top:10px"><button class="small" id="back">‹ INICIO</button><div class="grow"></div><button class="small primary" id="addMove">+ MOVIMIENTO</button></div>
       <h2>SALDO DISPONIBLE POR CASA</h2>
       <div class="card"><table class="tbl"><tr><th>CASA</th><th>NETO</th><th>BENEF.</th><th>EN JUEGO</th><th>DISPON.</th></tr>
-        ${fd.books.map(x => `<tr><td>${esc(x.book)}</td><td class="num">${fnum(x.net)}</td><td class="num ${cls(x.profit)}">${fnum(x.profit)}</td><td class="num">${fnum(x.pendingRisk)}</td><td class="num"><b>${fnum(x.available)}</b></td></tr>`).join('')}
-        <tr><td><b>TOTAL</b></td><td class="num">${fnum(fd.total.net)}</td><td class="num ${cls(fd.total.profit)}">${fnum(fd.total.profit)}</td><td class="num">${fnum(fd.total.pendingRisk)}</td><td class="num"><b class="pos">${fnum(fd.total.available)}</b></td></tr></table>
+        ${fd.books.map(x => `<tr><td>${esc(x.book)}</td><td class="num">${mny(x.net)}</td><td class="num ${cls(x.profit)}">${mny(x.profit)}</td><td class="num">${mny(x.pendingRisk)}</td><td class="num"><b>${mny(x.available)}</b></td></tr>`).join('')}
+        <tr><td><b>TOTAL</b></td><td class="num">${mny(fd.total.net)}</td><td class="num ${cls(fd.total.profit)}">${mny(fd.total.profit)}</td><td class="num">${mny(fd.total.pendingRisk)}</td><td class="num"><b class="pos">${mny(fd.total.available)}</b></td></tr></table>
         <div class="muted" style="margin-top:6px">DISPONIBLE = DEPÓSITOS NETOS + BONOS + BENEFICIO − EN JUEGO.${fd.total.freeLeft ? ` APUESTAS GRATIS RESTANTES: ${eur(fd.total.freeLeft)}.` : ''}</div></div>
       <h2>MOVIMIENTOS</h2>
       <div class="card list" style="padding:0 12px">${ms.length ? ms.map(m => `<div class="item tap" data-id="${m.id}"><div class="grow"><b>${MOVE_TYPES[m.type] || m.type}</b> · ${esc(m.book)}
@@ -995,7 +1018,7 @@
       <label>TIPO</label><div class="seg" id="mt">${Object.keys(MOVE_TYPES).map(k => `<button type="button" data-t="${k}" class="${mv.type === k ? 'on' : ''}">${MOVE_TYPES[k]}</button>`).join('')}</div>
       <div class="muted" id="mtHelp" style="margin-top:6px"></div>
       <label>CASA</label><div class="chips scroll-x" id="mb">${Array.from(new Set(st.books.concat(mv.book ? [mv.book] : []))).map(v => `<button type="button" data-v="${esc(v)}" class="${v === mv.book ? 'on' : ''}">${esc(v)}</button>`).join('')}</div>
-      <div class="row"><div class="grow"><label>IMPORTE €</label><input id="amt" inputmode="decimal" value="${mv.amount != null ? fnum(Math.abs(mv.amount)) : ''}" placeholder="0,00"></div>
+      <div class="row"><div class="grow"><label>IMPORTE €</label><input id="amt" class="mny-in" inputmode="decimal" value="${mv.amount != null ? fnum(Math.abs(mv.amount)) : ''}" placeholder="0,00"></div>
         <div class="grow"><label>FECHA</label><input id="date" type="date" value="${esc(mv.date)}"></div></div>
       <label>NOTA</label><input id="note" value="${esc(mv.note)}" autocomplete="off">
       <div class="actions">${isNew ? '' : '<button class="danger" id="del">ELIMINAR</button>'}<button id="cancel">CANCELAR</button><button class="primary" id="ok">GUARDAR</button></div>`);
@@ -1068,8 +1091,8 @@
         <div class="seg">${[[0.125, '⅛ PRUDENTE'], [0.25, '¼ NORMAL'], [0.5, '½ ATREVIDO']].map(([v, t]) => `<button data-kelly="${v}" class="${st.kelly === v ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="muted" style="margin-top:6px">AL APUNTAR UN PICK, LA APP SUGIERE EL NIVEL SEGÚN LA VENTAJA. CUANTO MENOR LA FRACCIÓN, MÁS PEQUEÑO EL IMPORTE.</div></div>
       <h2>LÍMITES DE PÉRDIDA</h2>
-      <div class="card"><div class="row"><div class="grow"><label style="margin-top:0">SEMANAL €</label><input id="lw" inputmode="decimal" value="${st.lossWeek ? fnum(st.lossWeek) : ''}" placeholder="Sin límite"></div>
-        <div class="grow"><label style="margin-top:0">MENSUAL €</label><input id="lm" inputmode="decimal" value="${st.lossMonth ? fnum(st.lossMonth) : ''}" placeholder="Sin límite"></div></div>
+      <div class="card"><div class="row"><div class="grow"><label style="margin-top:0">SEMANAL €</label><input id="lw" class="mny-in" inputmode="decimal" value="${st.lossWeek ? fnum(st.lossWeek) : ''}" placeholder="Sin límite"></div>
+        <div class="grow"><label style="margin-top:0">MENSUAL €</label><input id="lm" class="mny-in" inputmode="decimal" value="${st.lossMonth ? fnum(st.lossMonth) : ''}" placeholder="Sin límite"></div></div>
         <div class="muted" style="margin-top:6px">SI LO SUPERAS, INICIO MUESTRA UN AVISO EN ROJO. SEMANA = LUNES A DOMINGO.</div></div>`)}
       ${page('picks', `
       <h2>ESCÁNER DE PICKS</h2>

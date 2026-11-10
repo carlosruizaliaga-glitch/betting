@@ -42,7 +42,11 @@
     header img { width: 28px; height: 28px; border-radius: 8px; }
     header h1 { margin: 0; font: 700 14px/1 var(--mono); letter-spacing: .14em; color: var(--text); }
     header h1::first-letter { color: var(--pos); }
-    #syncBtn { margin-left: auto; background: var(--card2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px;
+    .eye { margin-left: auto; width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 999px; background: var(--card2); border: 1px solid var(--line); color: var(--muted); }
+    .eye.on { color: var(--yellow); border-color: rgba(255, 211, 110, .4); background: var(--yellow-soft); }
+    .mny-in { -webkit-text-security: none; }
+    body.hide-amt .mny-in { -webkit-text-security: disc; text-security: disc; }
+    #syncBtn { margin-left: 0; background: var(--card2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px;
       font: 600 10px/1 var(--mono); letter-spacing: .06em; color: var(--muted); display: flex; align-items: center; gap: 6px; }
     .dot { width: 7px; height: 7px; display: inline-block; border-radius: 50%; background: var(--faint); }
     .dot.ok { background: var(--pos); box-shadow: 0 0 8px var(--pos); } .dot.warn { background: var(--yellow); } .dot.err { background: var(--neg); }
@@ -235,6 +239,7 @@
   <header>
     <img src="favicon.png" alt="">
     <h1>BETTING</h1>
+    <button id="eyeBtn" class="eye" aria-label="Ocultar importes"></button>
     <button id="syncBtn" aria-label="Sincronizar"><span class="dot" id="syncDot"></span><span id="syncTxt"></span></button>
   </header>
   <main id="view"></main>
@@ -246,9 +251,9 @@
     <button data-tab="stats"><span class="ic">📈</span>STATS</button>
     <button data-tab="settings"><span class="ic">⚙</span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=26"></script>
-  <script src="logic.js?v=26"></script>
-  <script src="store.js?v=26"></script>
-  <script src="app.js?v=26"></script>
+  <script src="version.js?v=27"></script>
+  <script src="logic.js?v=27"></script>
+  <script src="store.js?v=27"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>
