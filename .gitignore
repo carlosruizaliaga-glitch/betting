@@ -1,2 +1,4 @@
 .claude/
 backups/
+
+test/mock-browser.js
