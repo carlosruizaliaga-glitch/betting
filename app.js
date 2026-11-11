@@ -14,6 +14,27 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const today = () => L.madridDate();
 
+
+  // ---------- Iconos de línea (mismo trazo que el ojo de la cabecera) ----------
+  const ICON = {
+    home: '<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5.5h4V20"/>',
+    bolt: '<path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/>',
+    flame: '<path d="M12 3c.6 3.2 4.5 5 4.5 9.6a4.5 4.5 0 0 1-9 0c0-1.7.8-2.8 1.8-3.8.2 1.4.9 2.2 1.9 2.4C10.600 8.500 10.800 5.500 12 3z"/>',
+    chart: '<path d="M3.5 17 9 11.500l4 4 7.500-8"/><path d="M15.500 7.500h5v5"/>',
+    sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+    coin: '<circle cx="12" cy="12" r="8.500"/><path d="M15 9.500a3.500 3.500 0 1 0 0 5M7.500 11h6M7.500 13h6"/>',
+    bank: '<path d="M3.500 10 12 4.500 20.500 10"/><path d="M5.500 10v8M9.500 10v8M14.500 10v8M18.500 10v8M3.500 20.500h17"/>',
+    list: '<path d="M9 6.500h11M9 12h11M9 17.500h11"/><circle cx="4.500" cy="6.500" r=".9"/><circle cx="4.500" cy="12" r=".9"/><circle cx="4.500" cy="17.500" r=".9"/>',
+    star: '<path d="m12 3.500 2.600 5.400 5.900.8-4.300 4.100 1 5.900-5.200-2.800-5.200 2.800 1-5.900-4.300-4.100 5.900-.8z"/>',
+    clock: '<circle cx="12" cy="12" r="8.500"/><path d="M12 7.500V12l3 2"/>',
+    plug: '<path d="M9 3.500v5M15 3.500v5M6.500 8.500h11v2.500a5.500 5.500 0 0 1-11 0z"/><path d="M12 16.500v4"/>',
+    save: '<path d="M5 4h11l3.500 3.500V20H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
+    info: '<circle cx="12" cy="12" r="8.500"/><path d="M12 11v5.500M12 7.800v.1"/>',
+    filter: '<path d="M4 6h16M7 12h10M10 18h4"/>'
+  };
+  const icon = (n, size) => `<svg class="ico" width="${size || 22}" height="${size || 22}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
+  document.querySelectorAll('[data-ico]').forEach(e => { e.innerHTML = icon(e.dataset.ico, 22); });
+
   // ---------- Formato español ----------
   function fnum(x, dec) {
     dec = dec == null ? 2 : dec;
@@ -101,7 +122,7 @@
   // ---------- Navegación y cabecera ----------
   let tab = 'home';
   const filters = { book: '', sport: '', type: '', tipster: '', league: '', result: '' };
-  let statsPeriod = 'TOTAL', statsBy = 'sport';
+  let statsPeriod = 'TOTAL', statsBy = 'sport', statsTab = 'res';
   const view = document.getElementById('view');
   // ---------- Atrás (gesto o botón del móvil) ----------
   // Cada pantalla, hoja y diálogo es una entrada del historial: al ir atrás el móvil anima directamente
@@ -142,6 +163,14 @@
     if (t !== tab) { tab = t; render(); window.scrollTo(0, 0); }
   });
   document.getElementById('fab').addEventListener('click', () => openBet());
+  // El botón + se esconde al bajar (para no tapar el contenido) y vuelve al subir.
+  let lastY = 0;
+  window.addEventListener('scroll', () => {
+    const y = window.scrollY;
+    if (Math.abs(y - lastY) < 8) return;
+    document.body.classList.toggle('fab-hide', y > lastY && y > 80);
+    lastY = y;
+  }, { passive: true });
   const eyeBtn = document.getElementById('eyeBtn');
   const EYE_ON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
   const EYE_OFF = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/></svg>';
@@ -194,6 +223,18 @@
     if (S.status() === 'bad_secret') {
       view.insertAdjacentHTML('afterbegin', `<div class="banner">EL CÓDIGO YA NO ES VÁLIDO. AJUSTES → CERRAR SESIÓN Y VUELVE A ENTRAR.</div>`);
     }
+    renderBanners();
+    if (!hbChecked && navigator.onLine) { hbChecked = true; refreshPicks(); }
+  }
+  // Aviso si la tarea automática (cierre de apuestas, CLV, envío diario) lleva más de 30 min sin ejecutarse o ha fallado.
+  let hbChecked = false;
+  function renderBanners() {
+    document.querySelectorAll('.hbbanner').forEach(e => e.remove());
+    const hb = pickCache.heartbeat;
+    if (!hb || !hb.at || !view) return;
+    const mins = Math.round((Date.now() - new Date(hb.at).getTime()) / 60000);
+    const msg = hb.ok === false ? `La tarea automática falló: ${hb.error || 'error'}.` : mins > 30 ? `La tarea automática no se ejecuta desde hace ${mins} min. Las apuestas no se cerrarán solas hasta que vuelva.` : '';
+    if (msg) view.insertAdjacentHTML('afterbegin', `<div class="banner hbbanner">${esc(msg)}</div>`);
   }
 
   // ---------- Entrada con código ----------
@@ -310,7 +351,7 @@
         <div class="lab">${ks.map(k => `<span>${k === 'X' ? 'EMPATE' : k === '1' ? '1' : '2'} <b>${fnum(sn.probs[k] * 100, 0)} %</b></span>`).join('')}</div>
         <div class="muted" style="text-align:center">PROBABILIDAD JUSTA AL APOSTAR</div></div>`;
     }
-    const wait = ft && !m ? '<div class="muted" style="text-align:center;margin-top:6px">GOLES, CÓRNERS Y TARJETAS APARECEN AL COMPLETARSE LA FICHA.</div>' : '';
+    const wait = ft && !m ? '<div class="muted hint" style="text-align:center;margin-top:6px">Goles, córners y tarjetas aparecen al completarse la ficha.</div>' : '';
     return `<div class="mcard">${head}<div class="mc-meta">${meta}</div>${goals}${stats ? `<div class="mc-stats">${stats}</div>` : ''}${probs}${wait}</div>`;
   }
 
@@ -407,10 +448,13 @@
     const list = all.filter(b => Object.keys(filters).every(k => !filters[k] || (k === 'result' ? b.result === filters[k] : b[k] === filters[k])))
       .sort((a, b) => L.byTime(b, a));
     const s = L.summarize(list);
-    let html = `<div class="filters" style="margin-top:12px">
-      ${opt('book', 'CASA', uniq('book', st.books))}${opt('sport', 'DEPORTE', uniq('sport', st.sports))}${opt('type', 'TIPO', uniq('type', st.types))}
-      ${opt('tipster', 'TIPSTER', uniq('tipster', st.tipsters))}${opt('league', 'LIGA', uniq('league', st.leagues))}
-      <select data-f="result"><option value="">RESULTADO</option>${Object.keys(L.RESULTS).map(r => `<option ${filters.result === r ? 'selected' : ''} value="${r}">${L.RESULTS[r].label}</option>`).join('')}</select></div>
+    const FL = { book: 'Casa', sport: 'Deporte', type: 'Tipo', tipster: 'Tipster', league: 'Liga' };
+    const act = Object.keys(FL).filter(k => filters[k]);
+    const quick = [['', 'TODAS'], ['P', 'PEND.'], ['W', 'GANADAS'], ['L', 'PERDIDAS']];
+    let html = `<div class="row" style="margin-top:12px;gap:8px">
+      <button class="fbtn" id="openF">${icon('filter', 18)}<span>FILTROS${act.length ? ` · ${act.length}` : ''}</span></button>
+      <div class="chips scroll-x grow" style="margin:0">${quick.map(([k, t]) => `<button data-fr="${k}" class="${filters.result === k ? 'on' : ''}">${t}</button>`).join('')}</div></div>
+      ${act.length ? `<div class="chips scroll-x" style="margin-top:8px">${act.map(k => `<button class="on" data-fx="${k}">${FL[k]}: ${esc(filters[k])} <i>×</i></button>`).join('')}</div>` : ''}
       <div class="muted" style="margin:8px 0 0">${list.length} APUESTAS · ${eur(s.risk)} CERRADO · <span class="${cls(s.profit)}">${seur(s.profit)}</span> · YIELD ${spct(s.yield)}</div>`;
     if (!list.length) html += '<div class="card empty">NINGUNA APUESTA CON ESTOS FILTROS</div>';
     let lastDate = null, open = false;
@@ -422,12 +466,22 @@
       }
       const p = L.profit(b);
       html += `<div class="item tap" data-id="${b.id}"><div class="grow"><div class="ellipsis"><b>${esc(selText(b))}</b></div>
-        <div class="muted ellipsis">${esc(b.sport)} ${esc(b.type)} · ${esc(b.book)}${b.league ? ' · ' + esc(b.league) : ''}${b.tipster ? ' · ' + esc(b.tipster) : ''}${b.level ? ' · N' + b.level : ''}</div></div>
+        <div class="muted ellipsis">${esc(b.sport)} ${esc(b.type)} · ${esc(b.book)}${b.league ? ' · ' + esc(b.league) : ''}${b.tipster && st.tipsters.length > 1 ? ' · ' + esc(b.tipster) : ''}${b.level ? ' · N' + b.level : ''}</div></div>
         <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${b.autoSettled || b.match ? `<div class="muted">${esc(scoreOf(b))}${b.autoSettled ? ' · AUTO' : ''}</div>` : ''}${typeof b.clv === 'number' ? `<div class="muted">CLV <span class="${cls(b.clv)}">${spct(b.clv)}</span></div>` : b.pickId ? `<div class="muted">${b.clvMissed ? 'SIN CIERRE' : 'CLV PENDIENTE'}</div>` : ''}</div></div>`;
     });
     if (open) html += '</div>';
     view.innerHTML = html;
-    view.querySelectorAll('[data-f]').forEach(el => el.onchange = () => { filters[el.dataset.f] = el.value; render(); });
+    view.querySelectorAll('[data-fr]').forEach(el => el.onclick = () => { filters.result = el.dataset.fr; render(); });
+    view.querySelectorAll('[data-fx]').forEach(el => el.onclick = () => { filters[el.dataset.fx] = ''; render(); });
+    view.querySelector('#openF').onclick = () => {
+      const m = sheet(`<h3>FILTROS</h3>
+        ${[['book', 'CASA', uniq('book', st.books)], ['sport', 'DEPORTE', uniq('sport', st.sports)], ['type', 'TIPO', uniq('type', st.types)], ['tipster', 'TIPSTER', uniq('tipster', st.tipsters)], ['league', 'LIGA', uniq('league', st.leagues)]]
+          .map(([k, label, vals]) => `<label>${label}</label>${opt(k, 'Todas', vals)}`).join('')}
+        <div class="actions"><button id="fclear">QUITAR TODOS</button><button class="primary" id="fok">VER ${list.length}</button></div>`);
+      m.querySelectorAll('[data-f]').forEach(el => el.onchange = () => { filters[el.dataset.f] = el.value; });
+      m.querySelector('#fclear').onclick = () => { Object.keys(FL).forEach(k => { filters[k] = ''; }); closeSheet(); render(); };
+      m.querySelector('#fok').onclick = () => { closeSheet(); render(); };
+    };
     view.querySelectorAll('[data-id]').forEach(el => el.onclick = () => openBet(S.get(el.dataset.id)));
   }
 
@@ -593,7 +647,7 @@
   let pickCache = { picks: [], credits: null, at: null, lastScan: null };
   try { Object.assign(pickCache, JSON.parse(localStorage.getItem(PK) || '{}')); } catch (e) { console.error(e); }
   const savePicks = patch => { Object.assign(pickCache, patch); try { localStorage.setItem(PK, JSON.stringify(pickCache)); } catch (e) { console.error(e); } };
-  let picksMode = null, picksBusy = false, picksMsg = '', picksLoadedAt = 0;
+  let picksMode = null, picksBusy = false, picksMsg = '', picksLoadedAt = 0, picksHelp = false;
   const ptxt = n => fnum(n, n % 1 ? (n * 10 % 1 ? 2 : 1) : 0);
   // Nombre completo de una selección según el mercado: h2h, totals (con su línea), dc, dnb o btts.
   const OUT_NAME = (p, o, market, point) => market === 'dc' ? (o === '1X' ? `${p.home} o empate` : o === '12' ? `${p.home} o ${p.away}` : `${p.away} o empate`)
@@ -686,7 +740,7 @@
   async function refreshPicks() {
     try {
       const r = await S.callPicks({ action: 'picks' });
-      if (r && r.ok) { savePicks({ picks: r.picks, credits: r.credits || pickCache.credits, at: Date.now() }); picksLoadedAt = Date.now(); if (tab === 'picks') render(); }
+      if (r && r.ok) { savePicks({ picks: r.picks, credits: r.credits || pickCache.credits, at: Date.now(), heartbeat: r.heartbeat || null }); picksLoadedAt = Date.now(); if (tab === 'picks') render(); else renderBanners(); }
     } catch (e) { /* sin conexión: se ven los guardados */ }
   }
 
@@ -826,23 +880,27 @@
     const ls = pickCache.lastScan;
     const chip = (k, v, label) => `<button data-pf="${k}" data-v="${v}" class="${pv[k] === v ? 'on' : ''}">${label}</button>`;
 
-    let html = `<div class="card">
-      <div class="row"><div class="grow num">${creditsHtml(pickCache.credits)}</div>
-        ${ls ? `<span class="muted">${fdate(L.madridDate(new Date(ls.at))).slice(0, 5)} ${new Date(ls.at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</span>` : ''}</div>
+    let html = `<div class="card pkhdr">
+      <div class="row" style="gap:8px"><div class="grow num">${creditsHtml(pickCache.credits)}</div>
+        ${ls ? `<span class="muted">${fdate(L.madridDate(new Date(ls.at))).slice(0, 5)} ${new Date(ls.at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
+        <button class="infobtn${picksHelp ? ' on' : ''}" id="pkHelp" aria-label="Ayuda">${icon('info', 18)}</button></div>
       <div class="row" style="margin-top:8px;gap:6px">
         <button class="primary grow" id="scanSend" style="padding:13px 6px" ${picksBusy ? 'disabled' : ''}>${picksBusy ? '…' : '🔥 PICKS → TELEGRAM'}</button>
         <button id="scanOnly" style="padding:13px 10px" ${picksBusy ? 'disabled' : ''}>BUSCAR</button></div>
       ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
     </div>
-    <div class="seg">${['value', 'all'].map(m => `<button data-pm="${m}" class="${picksMode === m ? 'on' : ''}">${m === 'value' ? `SOLO ⭐ (${nVal})` : `TODOS (${filtered.length})`}</button>`).join('')}</div>
-    <div class="chips scroll-x pkfilters">
+    ${picksHelp ? `<div class="card hint" style="margin-top:8px"><b style="color:var(--text)">Cómo leer los picks</b><br>
+      <b>≥</b> es la cuota mínima en bet365 para que haya valor. <b>↑↓</b> es el cambio de probabilidad desde la primera búsqueda: en «Valor» se ordena por ventaja más movimiento, así que si el mercado se mueve a tu favor, sube.<br>
+      Toca una casilla para apuntar y el partido para ver casas y cuotas. Los partidos empezados no se muestran.</div>` : ''}
+    <div class="row" style="gap:8px;margin-top:8px">
+      <div class="seg grow">${['value', 'all'].map(m => `<button data-pm="${m}" class="${picksMode === m ? 'on' : ''}">${m === 'value' ? `⭐ ${nVal}` : `TODOS ${filtered.length}`}</button>`).join('')}</div>
+      <div class="seg" style="width:128px">${chip('sort', 'value', 'VALOR')}${chip('sort', 'time', 'HORA')}</div>
+    </div>
+    <div class="chips scroll-x pkfilters" style="margin-top:8px">
       ${sports.length > 1 ? chip('sport', '', 'TODOS') + sports.map(s => chip('sport', s, SPORT_EMOJI[s] || '🏆')).join('') + '<span class="sep"></span>' : ''}
       ${chip('day', '', 'CUALQUIER DÍA')}${chip('day', today, 'HOY')}${chip('day', tomorrow, 'MAÑANA')}${chip('day', 'later', 'DESPUÉS')}
     </div>
-    <div class="row" style="gap:6px;margin-top:6px">
-      <select id="pfLeague" class="grow"><option value="">TODAS LAS LIGAS</option>${leagues.map(l => `<option ${pv.league === l ? 'selected' : ''} value="${esc(l)}">${esc(l)}</option>`).join('')}</select>
-      <div class="seg" style="width:150px">${chip('sort', 'value', 'VALOR')}${chip('sort', 'time', 'HORA')}</div>
-    </div>`;
+    ${leagues.length > 1 ? `<select id="pfLeague" style="margin-top:8px;width:100%"><option value="">Todas las ligas</option>${leagues.map(l => `<option ${pv.league === l ? 'selected' : ''} value="${esc(l)}">${esc(l)}</option>`).join('')}</select>` : ''}`;
 
     if (!list.length) html += `<div class="card empty">${!(pickCache.picks || []).length ? 'AÚN NO HAY PICKS. PULSA BUSCAR.'
       : !filtered.length ? 'NINGÚN PARTIDO CON ESTOS FILTROS.' : 'NINGÚN PARTIDO CON ⭐ VALOR AHORA. TOCA "TODOS" PARA VERLOS.'}</div>`;
@@ -866,11 +924,11 @@
           : pickCells(p, p, 'h2h', st.threshold, true) + (p.totals ? pickCells(p, p.totals, 'totals', st.threshold, true) : '')}
       </div>`;
     });
-    html += `<div class="muted" style="margin:10px 0">≥ = CUOTA MÍNIMA DE BET365 PARA QUE HAYA VALOR. ↑↓ = CAMBIO DE PROBABILIDAD DESDE LA PRIMERA BÚSQUEDA (EN "VALOR" SE ORDENA POR VENTAJA + MOVIMIENTO: SI EL MERCADO SE MUEVE A TU FAVOR, SUBE). TOCA UNA CASILLA PARA APUNTAR; TOCA EL PARTIDO PARA VER CASAS Y CUOTAS. LOS PARTIDOS EMPEZADOS NO SE MUESTRAN.</div>`;
     view.innerHTML = html;
     view.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { picksMode = b.dataset.pm; render(); });
     view.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => { pv[b.dataset.pf] = b.dataset.v; savePv(); render(); });
-    view.querySelector('#pfLeague').onchange = ev => { pv.league = ev.target.value; savePv(); render(); };
+    const lg = view.querySelector('#pfLeague'); if (lg) lg.onchange = ev => { pv.league = ev.target.value; savePv(); render(); };
+    view.querySelector('#pkHelp').onclick = () => { picksHelp = !picksHelp; render(); };
     view.querySelector('#scanSend').onclick = () => runScan(true);
     view.querySelector('#scanOnly').onclick = () => runScan(false);
     view.querySelectorAll('[data-toggle]').forEach(h => h.onclick = () => {
@@ -924,8 +982,7 @@
     const kv = (k, v) => `<div class="kv"><span class="muted">${k}</span><span class="num">${v}</span></div>`;
     const orow = (k, o) => `<tr><td>${k}</td><td class="num">${o.n}</td><td class="num">${o.n ? odds(o.avg) : '—'}</td><td class="num">${o.n ? odds(o.min) : '—'}</td><td class="num">${o.n ? odds(o.max) : '—'}</td></tr>`;
     const clvN = clv.n, goal = 300, st0 = settings();
-    view.innerHTML = `
-      <div class="seg" style="margin-top:12px">${['7D', 'MES', 'AÑO', 'TOTAL'].map(p => `<button data-p="${p}" class="${p === statsPeriod ? 'on' : ''}">${p}</button>`).join('')}</div>
+    const secRes = `
       <h2>RENDIMIENTO · APUESTAS CERRADAS</h2>
       <div class="card">
         ${kv('APUESTAS', `${s.n} · <span class="pos">${s.w}G</span> <span class="neg">${s.l}P</span> ${nv('V')}N${nv('HW') + nv('HL') ? ` · ${nv("HW")} 1/2G ${nv("HL")} 1/2P` : ''}${nv('CO') ? ` · ${nv('CO')}CO` : ''}`)}
@@ -935,35 +992,6 @@
         ${kv('ACIERTO', pct(s.winPct))}
         ${kv('RACHA ACTUAL', st.n ? `<span class="${st.type === 'W' ? 'pos' : 'neg'}">${st.n} ${st.type === 'W' ? 'GANADA' : 'PERDIDA'}${st.n > 1 ? 'S' : ''}</span>` : '—')}
       </div>
-      <h2>CLV · <span class="acc">¿FUNCIONA EL SISTEMA?</span></h2>
-      <div class="card">
-        ${kv('CLV MEDIO', clv.avg == null ? '—' : `<span class="${cls(clv.avg)}">${spct(clv.avg, 2)}</span>`)}
-        ${kv('APUESTAS CON CLV +', clv.pos == null ? '—' : pct(clv.pos, 0))}
-        ${kv('MUESTRA', `<b class="${clvN >= goal ? 'pos' : 'yellow'}">${clvN} / ${goal}</b>`)}
-        ${kv('ESPERANDO CIERRE', bs.filter(b => b.pickId && typeof b.clv !== 'number' && !b.clvMissed && (b.legs || []).length <= 1).length)}
-        <div style="height:4px;background:var(--line);margin-top:6px"><div style="height:4px;width:${Math.min(100, clvN / goal * 100)}%;background:var(--cyan)"></div></div>
-        <div class="muted" style="margin-top:8px">REGLA: CONFIAR SOLO CON CLV MEDIO &gt; +1 % EN 300+ APUESTAS. SE RELLENA SOLO CON LAS APUESTAS HECHAS DESDE UN PICK: AL EMPEZAR EL PARTIDO SE GUARDA LA CUOTA DE CIERRE DE PINNACLE.</div>
-      </div>
-      ${clvN ? `<h2>CLV MEDIO ACUMULADO</h2>
-      <div class="card">${lineChart(L.clvSeries(bs), { id: 'clv', label: 'CLV medio acumulado', color: 'var(--cyan)',
-        refs: [{ v: 0, label: '0 %' }, { v: 0.01, label: 'OBJ +1 %', col: 'var(--yellow)' }],
-        tip: p => `${fdate(p.date)} · ${p.n} APUESTAS<br>MEDIA <b class="${cls(p.value)}">${spct(p.value, 2)}</b> · ${esc(selText(p.bet))} <span class="${cls(p.bet.clv)}">${spct(p.bet.clv, 1)}</span>` })}
-        <div class="muted" style="margin-top:6px">SI LA LÍNEA SE ASIENTA POR ENCIMA DE LA AMARILLA (+1 %) CON MUCHAS APUESTAS, EL SISTEMA FUNCIONA.</div></div>
-      <h2>CLV SEGÚN TU VENTAJA AL APOSTAR</h2>
-      <div class="card">${clvTable(L.clvBy(bs, b => { const e = L.edgeAtBet(b); return e == null ? null : e * 100 >= st0.threshold ? EDGE_KEYS[0] : e >= 0 ? EDGE_KEYS[1] : EDGE_KEYS[2]; }, EDGE_KEYS), true)}
-        <div class="muted" style="margin-top:6px">VENTAJA = TU CUOTA FRENTE A LA JUSTA DEL PICK AL APOSTAR. ≥ UMBRAL: CON VALOR · JUSTA–UMBRAL: POCO VALOR · BAJO JUSTA: SIN VALOR. AQUÍ SE VE SI TE COMPENSA ESPERAR A LA CUOTA MÍNIMA (≥).</div></div>
-      <h2>CLV POR LIGA</h2>
-      <div class="card">${clvTable(L.clvBy(bs, b => b.league))}</div>
-      <h2>CLV POR MERCADO</h2>
-      <div class="card">${clvTable(L.clvBy(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>
-      <h2>CLV SEGÚN LO PRONTO QUE APUESTAS</h2>
-      <div class="card">${clvTable(L.clvBy(bs, L.hourBucket, L.HOUR_KEYS), true)}
-        <div class="muted" style="margin-top:6px">HORAS QUE FALTABAN PARA EL PARTIDO AL APUNTAR LA APUESTA. SI UN TRAMO TIENE MEJOR CLV, ESE ES TU MEJOR MOMENTO. CON POCAS APUESTAS ES SOLO UNA PISTA.</div></div>
-      <h2>FIABILIDAD DE LA CUOTA JUSTA</h2>
-      <div class="card"><div class="muted" style="margin-bottom:6px">CUÁNTO CAMBIÓ LA PROBABILIDAD JUSTA ENTRE EL PICK Y EL CIERRE. ERROR BAJO = EL PRECIO JUSTO YA ERA FIABLE; SESGO = HACIA DÓNDE SE MOVIÓ EN MEDIA.</div>
-        ${driftTable(L.fairDrift(bs, b => b.league))}
-        <div class="muted" style="margin:10px 0 6px">POR MERCADO</div>
-        ${driftTable(L.fairDrift(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>` : ''}
       <h2>PICOS Y CAÍDAS · BENEFICIO ACUMULADO</h2>
       <div class="card">
         ${kv('ACTUAL', `<span class="${cls(pk.current)}">${seur(pk.current)}</span>`)}
@@ -971,7 +999,38 @@
         ${kv('MÍNIMO HISTÓRICO', seur(pk.min))}
         ${kv('CAÍDA DESDE EL PICO', `<span class="${cls(pk.fromPeak)}">${seur(pk.fromPeak)}</span>`)}
         ${kv('SUBIDA DESDE EL MÍNIMO', `<span class="${cls(pk.fromTrough)}">${seur(pk.fromTrough)}</span>`)}
+      </div>`;
+    const secClv = `
+      <h2>CLV · <span class="acc">¿FUNCIONA EL SISTEMA?</span></h2>
+      <div class="card">
+        ${kv('CLV MEDIO', clv.avg == null ? '—' : `<span class="${cls(clv.avg)}">${spct(clv.avg, 2)}</span>`)}
+        ${kv('APUESTAS CON CLV +', clv.pos == null ? '—' : pct(clv.pos, 0))}
+        ${kv('MUESTRA', `<b class="${clvN >= goal ? 'pos' : 'yellow'}">${clvN} / ${goal}</b>`)}
+        ${kv('ESPERANDO CIERRE', bs.filter(b => b.pickId && typeof b.clv !== 'number' && !b.clvMissed && (b.legs || []).length <= 1).length)}
+        <div style="height:4px;background:var(--line);margin-top:6px"><div style="height:4px;width:${Math.min(100, clvN / goal * 100)}%;background:var(--cyan)"></div></div>
+        <div class="muted hint" style="margin-top:8px">Regla: fíate solo con un CLV medio superior a +1 % en más de 300 apuestas. Se rellena con las apuestas hechas desde un pick: al empezar el partido se guarda la cuota de cierre de Pinnacle.</div>
       </div>
+      ${clvN ? `<h2>CLV MEDIO ACUMULADO</h2>
+      <div class="card">${lineChart(L.clvSeries(bs), { id: 'clv', label: 'CLV medio acumulado', color: 'var(--cyan)',
+        refs: [{ v: 0, label: '0 %' }, { v: 0.01, label: 'OBJ +1 %', col: 'var(--yellow)' }],
+        tip: p => `${fdate(p.date)} · ${p.n} APUESTAS<br>MEDIA <b class="${cls(p.value)}">${spct(p.value, 2)}</b> · ${esc(selText(p.bet))} <span class="${cls(p.bet.clv)}">${spct(p.bet.clv, 1)}</span>` })}
+        <div class="muted hint" style="margin-top:6px">Si la línea se asienta por encima de la amarilla (+1 %) con muchas apuestas, el sistema funciona.</div></div>
+      <h2>CLV SEGÚN TU VENTAJA AL APOSTAR</h2>
+      <div class="card">${clvTable(L.clvBy(bs, b => { const e = L.edgeAtBet(b); return e == null ? null : e * 100 >= st0.threshold ? EDGE_KEYS[0] : e >= 0 ? EDGE_KEYS[1] : EDGE_KEYS[2]; }, EDGE_KEYS), true)}
+        <div class="muted hint" style="margin-top:6px">Ventaja = tu cuota frente a la justa del pick al apostar. ≥ umbral: con valor · justa–umbral: poco valor · bajo justa: sin valor. Aquí ves si compensa esperar a la cuota mínima (≥).</div></div>
+      <h2>CLV POR LIGA</h2>
+      <div class="card">${clvTable(L.clvBy(bs, b => b.league))}</div>
+      <h2>CLV POR MERCADO</h2>
+      <div class="card">${clvTable(L.clvBy(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>
+      <h2>CLV SEGÚN LO PRONTO QUE APUESTAS</h2>
+      <div class="card">${clvTable(L.clvBy(bs, L.hourBucket, L.HOUR_KEYS), true)}
+        <div class="muted hint" style="margin-top:6px">Horas que faltaban para el partido al apuntar la apuesta. Si un tramo tiene mejor CLV, ese es tu mejor momento. Con pocas apuestas es solo una pista.</div></div>
+      <h2>FIABILIDAD DE LA CUOTA JUSTA</h2>
+      <div class="card"><div class="muted hint" style="margin-bottom:6px">Cuánto cambió la probabilidad justa entre el pick y el cierre. Error bajo: el precio justo ya era fiable. Sesgo: hacia dónde se movió en media.</div>
+        ${driftTable(L.fairDrift(bs, b => b.league))}
+        <div class="muted" style="margin:10px 0 6px">POR MERCADO</div>
+        ${driftTable(L.fairDrift(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>` : ''}`;
+    const secDet = `
       <h2>CUOTAS</h2>
       <div class="card"><table class="tbl"><tr><th></th><th>N</th><th>MEDIA</th><th>MÍN</th><th>MÁX</th></tr>
         ${orow('TODAS', os.all)}${orow('<span class="pos">GANADAS</span>', os.won)}${orow('<span class="neg">PERDIDAS</span>', os.lost)}</table></div>
@@ -987,6 +1046,12 @@
       </div>
       <h2>RESUMEN POR PERIODO</h2>
       <div class="card">${periodTable(L.periods(all, t))}</div>`;
+    const tabs = [['res', 'RESUMEN'], ['clv', 'CLV'], ['det', 'DETALLE']];
+    view.innerHTML = `
+      <div class="seg" style="margin-top:12px">${['7D', 'MES', 'AÑO', 'TOTAL'].map(p => `<button data-p="${p}" class="${p === statsPeriod ? 'on' : ''}">${p}</button>`).join('')}</div>
+      <div class="tabs2">${tabs.map(([k, t]) => `<button data-stab="${k}" class="${statsTab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+      ${statsTab === 'clv' ? secClv : statsTab === 'det' ? secDet : secRes}`;
+    view.querySelectorAll('[data-stab]').forEach(el => el.onclick = () => { statsTab = el.dataset.stab; render(); window.scrollTo(0, 0); });
     view.querySelectorAll('[data-p]').forEach(el => el.onclick = () => { statsPeriod = el.dataset.p; render(); });
     view.querySelectorAll('[data-by]').forEach(el => el.onclick = () => { statsBy = el.dataset.by; render(); });
     wireChart();
@@ -1001,7 +1066,7 @@
       <div class="card"><table class="tbl"><tr><th>CASA</th><th>NETO</th><th>BENEF.</th><th>EN JUEGO</th><th>DISPON.</th></tr>
         ${fd.books.map(x => `<tr><td>${esc(x.book)}</td><td class="num">${mny(x.net)}</td><td class="num ${cls(x.profit)}">${mny(x.profit)}</td><td class="num">${mny(x.pendingRisk)}</td><td class="num"><b>${mny(x.available)}</b></td></tr>`).join('')}
         <tr><td><b>TOTAL</b></td><td class="num">${mny(fd.total.net)}</td><td class="num ${cls(fd.total.profit)}">${mny(fd.total.profit)}</td><td class="num">${mny(fd.total.pendingRisk)}</td><td class="num"><b class="pos">${mny(fd.total.available)}</b></td></tr></table>
-        <div class="muted" style="margin-top:6px">DISPONIBLE = DEPÓSITOS NETOS + BONOS + BENEFICIO − EN JUEGO.${fd.total.freeLeft ? ` APUESTAS GRATIS RESTANTES: ${eur(fd.total.freeLeft)}.` : ''}</div></div>
+        <div class="muted hint" style="margin-top:6px">Disponible = depósitos netos + bonos + beneficio − en juego.${fd.total.freeLeft ? ` Apuestas gratis restantes: ${eur(fd.total.freeLeft)}.` : ''}</div></div>
       <h2>MOVIMIENTOS</h2>
       <div class="card list" style="padding:0 12px">${ms.length ? ms.map(m => `<div class="item tap" data-id="${m.id}"><div class="grow"><b>${MOVE_TYPES[m.type] || m.type}</b> · ${esc(m.book)}
         <div class="muted">${fdate(m.date)}${m.note ? ' · ' + esc(m.note) : ''}</div></div><div class="num ${m.type === 'withdrawal' ? 'neg' : 'pos'}">${m.type === 'withdrawal' ? '−' : '+'}${eur(Math.abs(m.amount))}</div></div>`).join('')
@@ -1057,26 +1122,26 @@
       <div data-sp="hub" ${sub === 'hub' ? '' : 'hidden'}>
         <h2>APUESTAS</h2>
         <div class="mlist">
-          ${item('stake', '💶', 'STAKE Y LÍMITES', `UNIDAD ${fnum(st.unit, 2).replace(/,00$/, '')} % · KELLY ${kl} · PÉRDIDA ${st.lossWeek || st.lossMonth ? 'LIMITADA' : 'SIN LÍMITE'}`)}
-          <button class="mrow" id="toCashRow"><span class="mic">🏦</span><span class="grow"><b>CAJA</b><em>DEPÓSITOS, RETIRADAS Y BONOS</em></span><span class="chev">›</span></button>
-          ${item('lists', '📋', 'LISTAS', 'CASAS, DEPORTES, TIPOS, TIPSTERS Y LIGAS')}
+          ${item('stake', icon('coin'), 'STAKE Y LÍMITES', `UNIDAD ${fnum(st.unit, 2).replace(/,00$/, '')} % · KELLY ${kl} · PÉRDIDA ${st.lossWeek || st.lossMonth ? 'LIMITADA' : 'SIN LÍMITE'}`)}
+          <button class="mrow" id="toCashRow"><span class="mic">${icon('bank')}</span><span class="grow"><b>CAJA</b><em>DEPÓSITOS, RETIRADAS Y BONOS</em></span><span class="chev">›</span></button>
+          ${item('lists', icon('list'), 'LISTAS', 'CASAS, DEPORTES, TIPOS, TIPSTERS Y LIGAS')}
         </div>
         <h2>PICKS</h2>
         <div class="mlist">
-          ${item('picks', '🔥', 'BÚSQUEDA DE PICKS', `${nOn} LIGAS ACTIVAS · ${st.totals !== false ? 'CON MÁS/MENOS' : 'SOLO GANADOR'}`)}
-          ${item('value', '⭐', 'VALOR Y CASAS', `UMBRAL ${fnum(st.threshold, st.threshold % 1 ? 1 : 0)} % · ${(st.myBooks || []).length ? st.myBooks.length + ' CASAS' : 'TODAS LAS CASAS'}`)}
-          ${item('auto', '⏱', 'AUTOMÁTICO', `ENVÍO ${st.autoSend && st.autoSend.on ? esc(st.autoSend.time) : 'APAGADO'} · CIERRE ${st.autoSettle !== false ? 'SÍ' : 'NO'}`)}
+          ${item('picks', icon('flame'), 'BÚSQUEDA DE PICKS', `${nOn} LIGAS ACTIVAS · ${st.totals !== false ? 'CON MÁS/MENOS' : 'SOLO GANADOR'}`)}
+          ${item('value', icon('star'), 'VALOR Y CASAS', `UMBRAL ${fnum(st.threshold, st.threshold % 1 ? 1 : 0)} % · ${(st.myBooks || []).length ? st.myBooks.length + ' CASAS' : 'TODAS LAS CASAS'}`)}
+          ${item('auto', icon('clock'), 'AUTOMÁTICO', `ENVÍO ${st.autoSend && st.autoSend.on ? esc(st.autoSend.time) : 'APAGADO'} · CIERRE ${st.autoSettle !== false ? 'SÍ' : 'NO'}`)}
         </div>
         <h2>SISTEMA</h2>
         <div class="mlist">
-          ${item('conn', '🔌', 'CONEXIÓN', 'THE ODDS API Y TELEGRAM')}
-          ${item('data', '💾', 'COPIA DE SEGURIDAD', 'EXCEL, COPIA COMPLETA E IMPORTAR')}
+          ${item('conn', icon('plug'), 'CONEXIÓN', 'THE ODDS API Y TELEGRAM')}
+          ${item('data', icon('save'), 'COPIA DE SEGURIDAD', 'EXCEL, COPIA COMPLETA E IMPORTAR')}
         </div>
       <h2>LA APP</h2>
       <div class="card"><div class="kv"><span>VERSIÓN</span><span class="num">${esc(window.APP_VERSION || '—')}</span></div>
         <div class="kv"><span>ÚLTIMA</span><span class="num">${upd.error ? '<span class="yellow">SIN CONEXIÓN</span>' : upd.latest ? esc(upd.latest) : '—'}</span></div>
         <button class="block ${hasUpd() ? 'primary' : ''}" id="updBtn" style="margin-top:10px">${hasUpd() ? '⬇ ACTUALIZAR LA APP AHORA' : '↻ BUSCAR ACTUALIZACIÓN'}</button>
-        <div class="muted" style="margin-top:8px">ACTUALIZAR NO BORRA NADA: TUS DATOS ESTÁN EN LA NUBE Y EN ESTE MÓVIL.</div></div>
+        <div class="muted hint" style="margin-top:8px">Actualizar no borra nada: tus datos están en la nube y en este móvil.</div></div>
       <h2>SESIÓN</h2>
       <div class="card"><div class="muted">ESTADO: ${st2 === 'ok' ? '<span class="pos">SINCRONIZADO</span>' : esc(String(st2).toUpperCase())}${S.lastSync() ? ' · ÚLTIMA ' + new Date(S.lastSync()).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' }) : ''}</div>
         <button class="danger block" id="logout" style="margin-top:10px">CERRAR SESIÓN EN ESTE MÓVIL</button></div>
@@ -1089,11 +1154,11 @@
         <div class="row"><input id="unit" inputmode="decimal" value="${fnum(st.unit, 2)}" style="max-width:120px"><span class="muted">NIVEL 5 = 5 × ${fnum(st.unit, 2)} % = ${fnum(5 * st.unit, 2)} % DEL DISPONIBLE</span></div>
         <label>IMPORTE SUGERIDO · FRACCIÓN DE KELLY</label>
         <div class="seg">${[[0.125, '⅛ PRUDENTE'], [0.25, '¼ NORMAL'], [0.5, '½ ATREVIDO']].map(([v, t]) => `<button data-kelly="${v}" class="${st.kelly === v ? 'on' : ''}">${t}</button>`).join('')}</div>
-        <div class="muted" style="margin-top:6px">AL APUNTAR UN PICK, LA APP SUGIERE EL NIVEL SEGÚN LA VENTAJA. CUANTO MENOR LA FRACCIÓN, MÁS PEQUEÑO EL IMPORTE.</div></div>
+        <div class="muted hint" style="margin-top:6px">Al apuntar un pick, la app sugiere el nivel según la ventaja. Cuanto menor la fracción, más pequeño el importe.</div></div>
       <h2>LÍMITES DE PÉRDIDA</h2>
       <div class="card"><div class="row"><div class="grow"><label style="margin-top:0">SEMANAL €</label><input id="lw" class="mny-in" inputmode="decimal" value="${st.lossWeek ? fnum(st.lossWeek) : ''}" placeholder="Sin límite"></div>
         <div class="grow"><label style="margin-top:0">MENSUAL €</label><input id="lm" class="mny-in" inputmode="decimal" value="${st.lossMonth ? fnum(st.lossMonth) : ''}" placeholder="Sin límite"></div></div>
-        <div class="muted" style="margin-top:6px">SI LO SUPERAS, INICIO MUESTRA UN AVISO EN ROJO. SEMANA = LUNES A DOMINGO.</div></div>`)}
+        <div class="muted hint" style="margin-top:6px">Si lo superas, Inicio muestra un aviso en rojo. La semana va de lunes a domingo.</div></div>`)}
       ${page('picks', `
       <h2>ESCÁNER DE PICKS</h2>
       <div class="card"><label style="margin-top:0">LIGAS · ✓ = SE BUSCA · ⭐ = ENTRA EN EL ENVÍO DIARIO</label>
@@ -1103,7 +1168,7 @@
           <button class="star${l.fav ? ' on' : ''}" data-sfav="${i}" aria-label="Favorita">⭐</button>
           <button class="rm" data-srm="${i}" aria-label="Quitar">×</button></div>`).join('') || '<div class="muted">SIN LIGAS</div>'}
         <button class="block" id="addLeague" style="margin-top:8px">+ AÑADIR LIGA O DEPORTE</button>
-        <div class="muted" style="margin-top:8px">${scanBudget(st)}</div>
+        <div class="muted hint" style="margin-top:8px">${scanBudget(st)}</div>
         <label>MÁS/MENOS GOLES EN BÚSQUEDAS MANUALES</label>
         <div class="seg"><button data-tot="on" class="${st.totals !== false ? 'on' : ''}">CON MÁS/MENOS</button><button data-tot="off" class="${st.totals === false ? 'on' : ''}">SOLO GANADOR</button></div>
         <label>ENVÍO POR DEFECTO</label>
@@ -1112,23 +1177,23 @@
       <h2>MIS CASAS</h2>
       <div class="card"><label style="margin-top:0">DÓNDE PUEDES APOSTAR · SI NO MARCAS NINGUNA SE USAN TODAS</label>
         <div class="chips" style="flex-wrap:wrap">${BOOK_LIST.map(n => `<button type="button" data-mybook="${esc(n)}" class="${(st.myBooks || []).includes(n) ? 'on' : ''}">${esc(n)}</button>`).join('')}</div>
-        <div class="muted" style="margin-top:6px">LA MEJOR CUOTA Y EL ⭐ DE PICKS SE CALCULAN SOLO CON LAS CASAS MARCADAS. BET365 NO ENTRA EN LA BÚSQUEDA: PARA ELLA USA LA CUOTA MÍNIMA "≥" O ESCRIBE SU CUOTA AL APUNTAR. SE APLICA A LAS BÚSQUEDAS NUEVAS.</div></div>
+        <div class="muted hint" style="margin-top:6px">La mejor cuota y el ⭐ de Picks se calculan solo con las casas marcadas. Bet365 no entra en la búsqueda: para ella usa la cuota mínima «≥» o escribe su cuota al apuntar. Se aplica a las búsquedas nuevas.</div></div>
       <h2>UMBRAL Y MARGEN</h2>
       <div class="card"><label style="margin-top:0">UMBRAL DE VALOR %</label><input id="thr" inputmode="decimal" value="${fnum(st.threshold, st.threshold % 1 ? 1 : 0)}" style="max-width:120px">
-        <div class="muted" style="margin-top:6px">UN PICK CUENTA COMO ⭐ SI LA MEJOR CUOTA SUPERA LA JUSTA EN ESTE PORCENTAJE O MÁS.</div>
+        <div class="muted hint" style="margin-top:6px">Un pick cuenta como ⭐ si la mejor cuota supera la justa en este porcentaje o más.</div>
         <label>QUITAR EL MARGEN (PINNACLE Y BETFAIR)</label>
         <div class="seg"><button data-dv="power" class="${st.devig !== 'mult' && st.devig !== 'shin' ? 'on' : ''}">POWER</button><button data-dv="shin" class="${st.devig === 'shin' ? 'on' : ''}">SHIN</button><button data-dv="mult" class="${st.devig === 'mult' ? 'on' : ''}">PROPORC.</button></div>
-        <div class="muted" style="margin-top:6px">PROPORCIONAL REPARTE EL MARGEN A PARTES IGUALES; POWER Y SHIN CARGAN MÁS MARGEN A LOS NO FAVORITOS, QUE ES DONDE LAS CASAS LO PONEN DE VERDAD. SHIN SUPONE QUE PARTE DE LOS APOSTANTES SABE MÁS QUE LA CASA.</div></div>`)}
+        <div class="muted hint" style="margin-top:6px">Proporcional reparte el margen a partes iguales; Power y Shin cargan más margen a los no favoritos, que es donde las casas lo ponen de verdad. Shin supone que parte de los apostantes sabe más que la casa.</div></div>`)}
       ${page('auto', `
       <h2>ENVÍO AUTOMÁTICO DIARIO</h2>
       <div class="card"><div class="row"><div class="grow"><div class="seg"><button data-auto="off" class="${!(st.autoSend && st.autoSend.on) ? 'on' : ''}">APAGADO</button><button data-auto="on" class="${st.autoSend && st.autoSend.on ? 'on' : ''}">ENCENDIDO</button></div></div>
         <input id="autoTime" type="time" value="${esc((st.autoSend && st.autoSend.time) || '10:00')}" style="width:120px"></div>
-        <div class="muted" style="margin-top:6px">CADA DÍA A ESA HORA (MADRID) TE LLEGAN LOS PICKS A TELEGRAM CON EL ENVÍO POR DEFECTO. GASTA 1 CRÉDITO POR LIGA CON PARTIDOS: UNOS 10 AL DÍA ≈ 300 AL MES DE LOS 500 GRATIS. SI QUEDAN MENOS DEL 10 %, NO GASTA Y TE AVISA.</div></div>
+        <div class="muted hint" style="margin-top:6px">Cada día a esa hora (Madrid) te llegan los picks a Telegram con el envío por defecto. Gasta 1 crédito por liga con partidos: unos 10 al día ≈ 300 al mes de los 500 gratis. Si quedan menos del 10 %, no gasta y te avisa.</div></div>
       <h2>CIERRE AUTOMÁTICO DE APUESTAS</h2>
       <div class="card"><div class="seg"><button data-aset="on" class="${st.autoSettle !== false ? 'on' : ''}">ENCENDIDO</button><button data-aset="off" class="${st.autoSettle === false ? 'on' : ''}">APAGADO</button></div>
         <label>AVISO EN TELEGRAM AL CERRAR</label>
         <div class="seg"><button data-anot="on" class="${st.settleNotify !== false ? 'on' : ''}">SÍ</button><button data-anot="off" class="${st.settleNotify === false ? 'on' : ''}">NO</button></div>
-        <div class="muted" style="margin-top:6px">LAS APUESTAS HECHAS DESDE UN PICK (1X2, GANADOR Y MÁS/MENOS) SE CIERRAN SOLAS CON EL MARCADOR FINAL, UNAS 2 H DESPUÉS DEL INICIO. GASTA 2 CRÉDITOS POR LIGA Y CONSULTA (COMO MUCHO UNA CADA 30 MIN). PUEDES CORREGIRLAS A MANO. EN FÚTBOL CUENTA EL RESULTADO QUE DA LA API (EN COPAS CON PRÓRROGA, REVÍSALO).</div></div>`)}
+        <div class="muted hint" style="margin-top:6px">Las apuestas hechas desde un pick (1X2, ganador y Más/Menos) se cierran solas con el marcador final, unas 2 h después del inicio. Gasta 2 créditos por liga y consulta (como mucho una cada 30 min). Puedes corregirlas a mano. En fútbol cuenta el resultado que da la API; en copas con prórroga, revísalo.</div></div>`)}
       ${page('lists', `
       <h2>LISTAS</h2>
       ${Object.keys(LISTS).map(k => `<div class="card listedit"><label style="margin-top:0">${LISTS[k]}</label>
@@ -1138,7 +1203,7 @@
       <h2>CONEXIÓN · THE ODDS API Y TELEGRAM</h2>
       <div class="card"><div id="conn" class="muted">PULSA COMPROBAR PARA VER EL ESTADO.</div>
         <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button><button class="small" id="chkFb">COMPROBAR FÚTBOL</button></div>
-        <div class="muted" style="margin-top:8px">FÚTBOL = API-FOOTBALL: DA CÓRNERS, TARJETAS Y GOLES CON MINUTO PARA LA FICHA DE CADA APUESTA.</div></div>`)}
+        <div class="muted hint" style="margin-top:8px">Fútbol = API-Football: da córners, tarjetas y goles con minuto para la ficha de cada apuesta.</div></div>`)}
       ${page('data', `
       <h2>COPIA DE SEGURIDAD</h2>
       <div class="card"><div class="row" style="flex-wrap:wrap;gap:6px">
@@ -1225,7 +1290,7 @@
     const on = (st.scan || []).filter(l => l.on), fav = on.filter(l => l.fav);
     const manual = on.reduce((n, l) => n + (st.totals !== false && sportOf(l.key) === 'soccer' ? 2 : 1), 0);
     const daily = (fav.length ? fav : on).length;
-    return `BÚSQUEDA MANUAL: HASTA ${manual} CRÉDITO${manual === 1 ? '' : 'S'}. ENVÍO DIARIO: ${fav.length ? 'SOLO ⭐' : 'TODAS LAS ACTIVAS (MARCA ⭐ PARA AHORRAR)'}, HASTA ${daily}/DÍA ≈ ${daily * 30}/MES DE 500. SOLO GASTAN LAS LIGAS CON PARTIDOS EN 72 H.`;
+    return `Búsqueda manual: hasta ${manual} crédito${manual === 1 ? '' : 's'}. Envío diario: ${fav.length ? 'solo ⭐' : 'todas las activas (marca ⭐ para ahorrar)'}, hasta ${daily}/día ≈ ${daily * 30}/mes de 500. Solo gastan las ligas con partidos en 72 h.`;
   }
 
   // Selector con todas las competiciones de The Odds API (la lista no gasta créditos).
@@ -1315,7 +1380,7 @@
     try {
       const r = await S.callPicks({ action: 'football' });
       if (r.error === 'missing_football_key') { box.innerHTML = '<span class="yellow">FALTA LA CLAVE API_FOOTBALL_KEY EN SUPABASE (VER LAS INSTRUCCIONES).</span>'; return; }
-      if (r.ok === false) { box.innerHTML = `<span class="neg">⛔ ${esc(r.error || 'ERROR')}</span><div class="muted" style="margin-top:6px">SI DICE QUE EL PLAN NO TIENE ACCESO A LA TEMPORADA, LA CUENTA GRATIS NO SIRVE PARA PARTIDOS ACTUALES.</div>`; return; }
+      if (r.ok === false) { box.innerHTML = `<span class="neg">⛔ ${esc(r.error || 'ERROR')}</span><div class="muted hint" style="margin-top:6px">Si dice que el plan no tiene acceso a la temporada, la cuenta gratis no sirve para partidos actuales.</div>`; return; }
       box.innerHTML = `<span class="pos">✓ FUNCIONA</span> · ${r.matches} PARTIDOS DE AYER${r.left != null ? ` · QUEDAN ${r.left} CONSULTAS HOY` : ''}`;
     } catch (e) { box.innerHTML = '<span class="neg">⛔ SIN CONEXIÓN</span>'; }
   }

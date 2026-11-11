@@ -21,7 +21,7 @@
        JetBrains Mono para cifras y etiquetas; Inter para los textos. */
     :root {
       /* Fondo "verde tapete" (25/10/2026): casi negro con un toque de verde; tarjetas un escalón más claras. */
-      --bg: #0a1214; --card: #111b1d; --card2: #0e1618; --raise: #182427; --text: #e8f1ef; --muted: #93a8a6; --faint: #5d7270;
+      --bg: #0a1214; --card: #111b1d; --card2: #0e1618; --raise: #182427; --text: #e8f1ef; --muted: #93a8a6; --faint: #71878a;
       --line: #1c2a2c; --line2: #152224;
       --pos: #43e8c0; --pos-soft: rgba(67, 232, 192, .13); --money: #43e8c0; --money-dark: #0f3a33;
       --neg: #ff6b6b; --neg-soft: rgba(255, 107, 107, .13);
@@ -111,7 +111,8 @@
       border: 1px solid var(--line); border-radius: 20px; padding: 6px; max-width: 660px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0, 0, 0, .6); }
     nav.tabs button { background: none; border: 0; border-radius: 14px; padding: 7px 0 6px; font: 600 9px/1.1 var(--mono); letter-spacing: .06em;
       color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-    nav.tabs button .ic { font-size: 16px; line-height: 1.1; }
+    nav.tabs button .ic { display: block; line-height: 1; height: 22px; margin-bottom: 3px; }
+    .ico { display: block; margin: 0 auto; }
     nav.tabs button.active { color: var(--pos); background: var(--pos-soft); }
     label { display: block; font: 600 10px/1 var(--mono); letter-spacing: .12em; color: var(--muted); margin: 16px 2px 7px; }
     input, select, textarea { font: 16px/1.3 var(--sans); width: 100%; padding: 12px 13px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card2); color: var(--text); }
@@ -194,7 +195,7 @@
     .mlist { border: 1px solid var(--line); border-radius: var(--r); background: linear-gradient(180deg, var(--card), var(--card2)); box-shadow: var(--shadow); overflow: hidden; }
     .mrow { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: 13px 14px; border-bottom: 1px solid var(--line2); }
     .mrow:last-child { border-bottom: 0; }
-    .mrow .mic { font-size: 18px; width: 26px; text-align: center; flex: none; }
+    .mrow .mic { width: 28px; flex: none; color: var(--pos); display: grid; place-items: center; }
     .mrow b { display: block; font: 600 12px/1.3 var(--mono); letter-spacing: .06em; color: var(--text); }
     .mrow em { display: block; font: normal 400 10.5px/1.4 var(--mono); letter-spacing: .02em; color: var(--muted); margin-top: 2px; }
     .mrow .chev { color: var(--faint); font-size: 18px; }
@@ -216,6 +217,23 @@
     .mc-prob .bar { display: flex; height: 4px; border-radius: 4px; overflow: hidden; gap: 2px; }
     .mc-prob .bar i { display: block; background: var(--faint); } .mc-prob .bar i.k1 { background: var(--pos); } .mc-prob .bar i.k2 { background: var(--cyan); }
     .mc-prob .lab { display: flex; justify-content: space-between; margin-top: 5px; font: 400 10px var(--mono); color: var(--muted); } .mc-prob .lab b { color: var(--text); font-weight: 500; }
+    .tabs2 { display: flex; gap: 22px; margin: 14px 2px 2px; border-bottom: 1px solid var(--line2); }
+    .tabs2 button { background: none; border: 0; border-radius: 0; padding: 10px 2px 11px; font: 600 11px/1 var(--mono); letter-spacing: .12em; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tabs2 button.on { color: var(--pos); border-bottom-color: var(--pos); }
+    .fbtn { display: flex; align-items: center; gap: 8px; flex: none; padding: 0 14px; height: 40px; border-radius: 12px; font: 600 11px var(--mono); letter-spacing: .08em; background: var(--card2); border: 1px solid var(--line); color: var(--text); }
+    .fbtn .ico { margin: 0; color: var(--pos); }
+    .chips button i { font-style: normal; margin-left: 4px; color: var(--muted); }
+    .hint { font: 400 12px/1.55 var(--sans); letter-spacing: 0; text-transform: none; color: var(--muted); }
+    .infobtn { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 999px; background: var(--card2); border: 1px solid var(--line); color: var(--muted); }
+    .infobtn.on { color: var(--pos); border-color: rgba(67, 232, 192, .4); background: var(--pos-soft); }
+    .fab { transition: transform .2s, opacity .2s; }
+    body.fab-hide .fab { transform: translateY(90px) scale(.8); opacity: 0; pointer-events: none; }
+    body.hide-amt .big { letter-spacing: .3em; color: var(--muted); }
+    .seg button { min-height: 40px; }
+    .chips button { min-height: 38px; }
+    .eye { width: 40px; height: 40px; }
+    #syncBtn { min-height: 34px; }
+    .banner.hbbanner { border-color: rgba(255, 211, 110, .35); background: var(--yellow-soft); color: var(--yellow); font: 400 12px/1.5 var(--sans); }
     .sugg { margin-top: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card2); font: 500 11px/1.6 var(--mono); letter-spacing: .02em; }
     .sugg button { margin-left: 6px; padding: 3px 10px; }
     .pksec { font: 600 10px/1 var(--mono); letter-spacing: .1em; color: var(--muted); margin: 14px 2px 0; }
@@ -245,15 +263,15 @@
   <main id="view"></main>
   <button class="fab" id="fab" aria-label="Nueva apuesta">+</button>
   <nav class="tabs">
-    <button data-tab="home" class="active"><span class="ic">🏠</span>INICIO</button>
-    <button data-tab="bets"><span class="ic">⚡</span>APUESTAS</button>
-    <button data-tab="picks"><span class="ic">🔥</span>PICKS</button>
-    <button data-tab="stats"><span class="ic">📈</span>STATS</button>
-    <button data-tab="settings"><span class="ic">⚙</span>AJUSTES</button>
+    <button data-tab="home" class="active"><span class="ic" data-ico="home"></span>INICIO</button>
+    <button data-tab="bets"><span class="ic" data-ico="bolt"></span>APUESTAS</button>
+    <button data-tab="picks"><span class="ic" data-ico="flame"></span>PICKS</button>
+    <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
+    <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=27"></script>
-  <script src="logic.js?v=27"></script>
-  <script src="store.js?v=27"></script>
-  <script src="app.js?v=27"></script>
+  <script src="version.js?v=29"></script>
+  <script src="logic.js?v=29"></script>
+  <script src="store.js?v=29"></script>
+  <script src="app.js?v=29"></script>
 </body>
 </html>

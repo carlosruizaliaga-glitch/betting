@@ -443,6 +443,20 @@ async function autoSend(now: Date) {
   return { cost: r.cost || 0, sent: r.sent || 0 };
 }
 
+// Latido de la tarea automática: la app lo lee para avisar si lleva rato sin ejecutarse. Si falla, avisa por Telegram (como mucho una vez por hora).
+async function heartbeat(now: Date, error: string | null) {
+  try {
+    const { data: prev } = await db.from('bt_state').select('data').eq('key', 'heartbeat').maybeSingle();
+    const p: any = (prev && prev.data) || {};
+    let alertAt = p.alertAt || null;
+    if (error && env('TELEGRAM_BOT_TOKEN') && env('TELEGRAM_CHAT_ID') && (!alertAt || now.getTime() - new Date(alertAt).getTime() > 3600e3)) {
+      await telegram('sendMessage', { chat_id: env('TELEGRAM_CHAT_ID'), text: `⚠️ La tarea automática de Betting ha fallado: ${error.slice(0, 200)}` });
+      alertAt = now.toISOString();
+    }
+    await db.from('bt_state').upsert({ key: 'heartbeat', data: { at: now.toISOString(), ok: !error, error, alertAt }, updated_at: now.toISOString() });
+  } catch (e) { console.error(e); }
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
@@ -453,12 +467,16 @@ Deno.serve(async req => {
   if (body.action === 'cron') {
     const { data: k } = await db.from('bt_state').select('data').eq('key', 'cron_key').maybeSingle();
     if (!k || !body.cronKey || body.cronKey !== k.data.key) return json({ error: 'bad_cron' }, 401);
+    const now = new Date();
     try {
-      const now = new Date();
-      return json({ ok: true, closing: await captureClosing(now), clv: await fillClv(), match: await fillMatch(now), settle: await autoSettle(now), auto: await autoSend(now) });
+      const out = { ok: true, closing: await captureClosing(now), clv: await fillClv(), match: await fillMatch(now), settle: await autoSettle(now), auto: await autoSend(now) };
+      await heartbeat(now, null);
+      return json(out);
     } catch (e) {
       console.error(e);
-      return json({ error: 'server', message: String((e && (e as Error).message) || e) }, 500);
+      const message = String((e && (e as Error).message) || e);
+      await heartbeat(now, message);
+      return json({ error: 'server', message }, 500);
     }
   }
 
@@ -482,7 +500,8 @@ Deno.serve(async req => {
         }
         const { data: last } = await db.from('bt_state').select('data').eq('key', 'last_scan').maybeSingle();
         const { data: auto } = await db.from('bt_state').select('data').eq('key', 'auto_send').maybeSingle();
-        return json({ ok: true, secrets, names: ownSecretNames(), oddsError, credits: credits || await loadCredits(), sports, sportsInfo, lastScan: last && last.data, autoSend: auto && auto.data });
+        const { data: hb } = await db.from('bt_state').select('data').eq('key', 'heartbeat').maybeSingle();
+        return json({ ok: true, secrets, names: ownSecretNames(), oddsError, credits: credits || await loadCredits(), sports, sportsInfo, lastScan: last && last.data, autoSend: auto && auto.data, heartbeat: hb && hb.data });
       }
       case 'detect_chat': {
         if (!env('TELEGRAM_BOT_TOKEN')) return json({ error: 'missing_token' });
@@ -496,7 +515,8 @@ Deno.serve(async req => {
         return json({ ok: true, chats: [...chats.values()] });
       }
       case 'picks':
-        return json({ ok: true, picks: await picksFromDb(), credits: await loadCredits() });
+        { const { data: hb } = await db.from('bt_state').select('data').eq('key', 'heartbeat').maybeSingle();
+          return json({ ok: true, picks: await picksFromDb(), credits: await loadCredits(), heartbeat: hb && hb.data }); }
       case 'scan':
         return json(await scan(body));
       case 'extras':
