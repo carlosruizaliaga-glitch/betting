@@ -1,6 +1,6 @@
 // Comprueba la búsqueda del partido por nombres y la ficha (marcador, descanso, goles, córners y tarjetas).
 import assert from 'assert';
-import { teamTokens, teamSim, findFixture, buildMatch, FIXTURE_DONE } from '../supabase/functions/bt-picks/picks.js';
+import { teamTokens, teamSim, findFixture, buildMatch, FIXTURE_DONE, parsePrediction } from '../supabase/functions/bt-picks/picks.js';
 
 // ---------- Nombres ----------
 assert.deepStrictEqual(teamTokens('Atlético de Madrid'), ['atletico', 'madrid']);
@@ -49,4 +49,11 @@ assert.strictEqual(m.src, 'apif');
 const m2 = buildMatch(f, ev, []);
 assert.strictEqual(m2.corners, null);
 assert.deepStrictEqual(m2.yellow, [1, 0]);
+// ---------- Predicción de API-Football ----------
+const pr = parsePrediction({ predictions: { percent: { home: '50%', draw: '30%', away: '20%' }, advice: 'Double chance : 1X' } });
+assert(Math.abs(pr.p['1'] - 0.5) < 1e-9 && Math.abs(pr.p.X - 0.3) < 1e-9 && pr.advice === 'Double chance : 1X');
+const pr2 = parsePrediction({ predictions: { percent: { home: '45%', draw: '45%', away: '20%' } } });   // suma 110: se normaliza
+assert(Math.abs(pr2.p['1'] + pr2.p.X + pr2.p['2'] - 1) < 1e-9);
+assert.strictEqual(parsePrediction({ predictions: {} }), null);
+assert.strictEqual(parsePrediction(null), null);
 console.log('OK ficha del partido · nombres, búsqueda, marcador, goles, córners y tarjetas');

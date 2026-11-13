@@ -500,6 +500,7 @@
       pickOutcome: (prefill && prefill.outcome) || null, commence: (prefill && prefill.commence) || null
     };
     if (prefill && prefill.snap) b.snap = prefill.snap;
+    if (prefill && prefill.odds > 1) { b.odds = prefill.odds; b.legs[0].odds = prefill.odds; }
     if (prefill && prefill.sport) b.sport = prefill.sport;
     if (prefill && prefill.type) b.type = prefill.type;
     if (prefill && prefill.pickId) { b.pickMarket = prefill.market || 'h2h'; if (prefill.point != null) b.point = prefill.point; }
@@ -826,7 +827,42 @@
     } else if (soccer) {
       h += `<button class="block" style="margin-top:10px" data-extras="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ AMBOS MARCAN Y MÁS/MENOS 0,5 / 1,5 / 3,5 · 2 CRÉDITOS</button>`;
     }
+    h += sourcesBlock(p, soccer) + checkerBlock(p, d);
     return h;
+  }
+
+  // Fuentes: mercado afinado (manda), media de casas normales y modelo de API-Football, con aviso si discrepan.
+  function sourcesBlock(p, soccer) {
+    const keys = ['1', 'X', '2'].filter(k => p.fair_prob && p.fair_prob[k] != null);
+    const soft = softProb(p), mod = p.model && p.model.p;
+    const lab = k => k === 'X' ? 'EMPATE' : (k === '1' ? p.home : p.away).toUpperCase();
+    const row = (name, pr, cls2) => `<tr><td class="${cls2 || ''}">${name}</td>${keys.map(k => `<td class="num">${pr && pr[k] != null ? fnum(pr[k] * 100, 0) + '%' : '—'}</td>`).join('')}</tr>`;
+    const diff = (a, b) => a && b ? Math.max(...keys.map(k => Math.abs((a[k] || 0) - (b[k] || 0)))) : 0;
+    const dm = diff(p.fair_prob, mod), ds = diff(p.fair_prob, soft && soft.p);
+    const warn = dm > 0.08 ? `El modelo se separa ${fnum(dm * 100, 0)} puntos del mercado: mira el partido con calma (bajas, rotaciones, motivación) antes de apostar.`
+      : ds > 0.05 ? `Las casas normales se separan ${fnum(ds * 100, 0)} puntos del mercado afinado: alguna puede ir con retraso.` : '';
+    return `<div class="pksec">FUENTES</div>
+      <table class="tbl srcs"><tr><th></th>${keys.map(k => `<th class="ellipsis" style="max-width:80px">${esc(lab(k))}</th>`).join('')}</tr>
+        ${row('Mercado afinado', p.fair_prob, 'pos')}${row(`Casas normales${soft ? ' (' + soft.n + ')' : ''}`, soft && soft.p)}${row('Modelo API-Football', mod)}</table>
+      ${mod && p.model.advice ? `<div class="muted hint" style="margin-top:4px">Consejo del modelo: ${esc(p.model.advice)}</div>` : ''}
+      ${warn ? `<div class="hint" style="margin-top:6px;color:var(--yellow)">${esc(warn)}</div>` : ''}
+      <div class="muted hint" style="margin-top:4px">La cuota mínima la marca el mercado afinado; las otras fuentes sirven para detectar partidos raros.</div>
+      ${soccer && !mod ? `<button class="block" style="margin-top:8px" data-model="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ VER MODELO DE API-FOOTBALL · 2 CONSULTAS</button>` : ''}`;
+  }
+
+  // Comprobador de cuota de bet365 (normal o supercuota) para cualquier selección del partido.
+  function checkerBlock(p, d) {
+    const opts = [];
+    const add = (market, mk, pt) => { if (!mk) return; (MK_KEYS[market] || outKeys(mk.fair_prob)).forEach(o => { if (mk.fair_odds && mk.fair_odds[o]) opts.push([`${market}|${o}|${pt != null ? pt : ''}`, OUT_NAME(p, o, market, pt)]); }); };
+    add('h2h', p);
+    if (d) { add('dc', d.dc); add('dnb', d.dnb); }
+    if (p.totals) add('totals', p.totals, p.totals.point);
+    if (p.extras) { (p.extras.lines || []).forEach(l => add('totals', l, l.point)); add('btts', p.extras.btts); }
+    return `<div class="pksec">COMPROBAR CUOTA DE BET365 O SUPERCUOTA</div>
+      <div class="ckbox" data-ck="${esc(p.id)}"><div class="row" style="gap:6px;margin-top:8px">
+        <select class="grow">${opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select>
+        <input inputmode="decimal" placeholder="Cuota" style="width:90px"></div>
+        <div class="ckres" style="margin-top:8px"></div></div>`;
   }
 
   // Pide los mercados extra de un partido (gasta 2 créditos; se guardan 30 min).
@@ -936,15 +972,71 @@
     });
     view.querySelectorAll('[data-extras]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadExtras(b.dataset.extras); });
     view.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
-      const p = (pickCache.picks || []).find(x => x.id === b.dataset.pick), o = b.dataset.o, market = b.dataset.m, pt = b.dataset.pt;
-      const mk = p && mkFor(p, market, pt);
-      if (!mk) return;
-      const sp = sportOf(p.sport_key);
-      openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o, market, pt != null ? +pt : null), league: p.league, fair: L.r2(mk.fair_odds[o]), pickId: p.id, outcome: o,
-        commence: p.commence_time, sport: sportEmoji(p.sport_key), market, point: market === 'totals' ? +pt : null,
-        snap: { home: p.home, away: p.away, league: p.league, probs: p.fair_prob, src: p.fair_src || ['pinnacle'], at: p.captured_at },
-        type: market === 'totals' ? 'Goles' : market === 'btts' ? 'Ambos marcan' : market === 'dc' ? 'Doble oportunidad' : market === 'dnb' ? 'Empate no vale' : sp === 'soccer' ? '1X2' : 'Ganador' });
+      const p = (pickCache.picks || []).find(x => x.id === b.dataset.pick);
+      if (p) betFromPick(p, b.dataset.m, b.dataset.o, b.dataset.pt);
     });
+    view.querySelectorAll('[data-model]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadModel(b.dataset.model); });
+    // Comprobador: cuota de bet365 (normal o supercuota) frente a la justa
+    view.querySelectorAll('.ckbox').forEach(box => {
+      const id = box.dataset.ck, sel = box.querySelector('select'), inp = box.querySelector('input'), out = box.querySelector('.ckres');
+      const p = (pickCache.picks || []).find(x => x.id === id);
+      if (!p) return;
+      const upd = () => {
+        ckState[id] = { v: sel.value, odds: inp.value };
+        const [market, o, pt] = sel.value.split('|'), mk = mkFor(p, market, pt || undefined), odd = pnum(inp.value);
+        if (!mk || !(odd > 1)) { out.innerHTML = '<span class="muted">Escribe la cuota que ves en bet365.</span>'; return; }
+        const fair = mk.fair_odds[o], edge = odd / fair - 1, st = settings();
+        const sug = L.suggestStake(odd, fair, L.funds(bets(), moves()).total.available, st.unit, st.kelly);
+        const verdict = edge * 100 >= st.threshold ? ['pos', 'VALE LA PENA'] : edge >= 0 ? ['yellow', 'JUSTA'] : ['neg', 'CARA'];
+        out.innerHTML = `<b class="${verdict[0]}">${verdict[1]} ${spct(edge, 1)}</b> <span class="muted">· justa ${odds(fair)}${sug && sug.level ? ` · nivel ${sug.level} (${eur(sug.stake)})` : ''}</span>
+          <button class="small" data-ckbet="1">APUNTAR</button>`;
+        out.querySelector('[data-ckbet]').onclick = () => betFromPick(p, market, o, pt || undefined, odd);
+      };
+      sel.onchange = upd; inp.oninput = upd;
+      if (ckState[id]) { if (ckState[id].v) sel.value = ckState[id].v; inp.value = ckState[id].odds || ''; }
+      upd();
+    });
+  }
+
+  // Abre la hoja de apuesta con los datos del pick (y la cuota, si viene del comprobador).
+  function betFromPick(p, market, o, pt, odd) {
+    const mk = mkFor(p, market, pt);
+    if (!mk) return;
+    const sp = sportOf(p.sport_key);
+    openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o, market, pt != null ? +pt : null), league: p.league, fair: L.r2(mk.fair_odds[o]), pickId: p.id, outcome: o,
+      commence: p.commence_time, sport: sportEmoji(p.sport_key), market, point: market === 'totals' ? +pt : null, odds: odd || null,
+      snap: { home: p.home, away: p.away, league: p.league, probs: p.fair_prob, src: p.fair_src || ['pinnacle'], at: p.captured_at },
+      type: market === 'totals' ? 'Goles' : market === 'btts' ? 'Ambos marcan' : market === 'dc' ? 'Doble oportunidad' : market === 'dnb' ? 'Empate no vale' : sp === 'soccer' ? '1X2' : 'Ganador' });
+  }
+  const ckState = {};
+
+  // Probabilidad media de las casas normales (sin margen), a partir del precio de cada casa.
+  function softProb(p) {
+    const keys = Object.keys(p.fair_prob || {}), rows = Object.values(p.prices || {}).filter(r => keys.every(k => r[k] > 1));
+    if (!rows.length) return null;
+    const acc = Object.fromEntries(keys.map(k => [k, 0]));
+    rows.forEach(r => { const s = keys.reduce((a, k) => a + 1 / r[k], 0); keys.forEach(k => { acc[k] += (1 / r[k]) / s; }); });
+    keys.forEach(k => { acc[k] /= rows.length; });
+    return { p: acc, n: rows.length };
+  }
+
+  // Pide la predicción de API-Football para un partido (2 consultas de las 100 diarias; se guarda 6 h).
+  async function loadModel(id) {
+    if (picksBusy) return;
+    picksBusy = true; picksMsg = 'CONSULTANDO EL MODELO DE API-FOOTBALL…'; render();
+    try {
+      const r = await S.callPicks({ action: 'model', pickId: id });
+      picksBusy = false;
+      if (r.error) {
+        picksMsg = '⛔ ' + ({ missing_football_key: 'Falta la clave API_FOOTBALL_KEY en Supabase.', fixture_not_found: 'API-Football no encuentra este partido.', no_prediction: 'API-Football no tiene predicción para este partido.', not_soccer: 'Solo hay modelo para fútbol.' }[r.error] || r.error);
+        render(); return;
+      }
+      const p = (pickCache.picks || []).find(x => x.id === id);
+      if (p) p.model = r.model;
+      savePicks({ picks: pickCache.picks });
+      picksMsg = r.cost ? `MODELO CARGADO · ${r.cost} CONSULTAS${r.left != null ? ` · QUEDAN ${r.left} HOY` : ''}` : 'MODELO YA CARGADO (SIN GASTO)';
+      render();
+    } catch (e) { picksBusy = false; picksMsg = '⛔ Sin conexión. Inténtalo de nuevo.'; render(); }
   }
 
   // ---------- ESTADÍSTICAS ----------

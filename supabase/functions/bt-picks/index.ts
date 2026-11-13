@@ -6,12 +6,13 @@
 //   detect_chat  → lee getUpdates del bot para encontrar tu chat_id
 //   picks        → picks guardados de las próximas horas (no gasta créditos)
 //   extras       → { pickId, confirmLow } Ambos marcan y Más/Menos 0,5, 1,5 y 3,5 de un partido (2 créditos)
+//   model        → { pickId } predicción de API-Football (% de 1, X y 2) de un partido de fútbol (2 consultas, se guarda 6 h)
 //   football     → comprueba la clave de API-Football y si da datos de la temporada actual (1 consulta)
 //   scan         → { mode: 'value'|'all', send: true, confirmLow: false }
 //                  (manual: ligas activas + Más/Menos en fútbol; auto: solo ligas ⭐ y solo ganador)
 // POST { action: 'cron', cronKey } (pg_cron cada 5 min): cuota de cierre, CLV, cierre automático y envío diario.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { BOOKS, buildPicks, buildExtras, formatMessages, pinnacleFair, closingFairFor, clv, sportOf, settleOutcome, betProfit, finalScore, findFixture, buildMatch, FIXTURE_DONE } from './picks.js';
+import { BOOKS, buildPicks, buildExtras, formatMessages, pinnacleFair, closingFairFor, clv, sportOf, settleOutcome, betProfit, finalScore, findFixture, buildMatch, FIXTURE_DONE, parsePrediction } from './picks.js';
 
 const ODDS = 'https://api.the-odds-api.com/v4';
 const CACHE_MIN = 30;
@@ -345,6 +346,26 @@ async function fillMatch(now: Date) {
   return { checked: done, calls };
 }
 
+// Segunda fuente para un pick: el modelo de API-Football. Busca el partido por fecha y nombres y pide su predicción.
+async function model(body: any) {
+  if (!env('API_FOOTBALL_KEY')) return { error: 'missing_football_key' };
+  const { data: p } = await db.from('bt_picks').select('id,sport_key,home,away,commence_time,model').eq('id', String(body.pickId || '')).maybeSingle();
+  if (!p) return { error: 'no_pick' };
+  if (sportOf(p.sport_key) !== 'soccer') return { error: 'not_soccer' };
+  if (p.model && p.model.at && Date.now() - new Date(p.model.at).getTime() < 6 * 3600e3) return { ok: true, model: p.model, cost: 0 };
+  const fl = await apif('/fixtures', { date: p.commence_time.slice(0, 10) });
+  if (!fl.ok) return { error: fl.error || 'football_error' };
+  const fx = findFixture(fl.data.response, p.home, p.away, p.commence_time);
+  if (!fx) return { error: 'fixture_not_found' };
+  const pr = await apif('/predictions', { fixture: String(fx.fixture.id) });
+  if (!pr.ok) return { error: pr.error || 'football_error' };
+  const m = parsePrediction(Array.isArray(pr.data.response) ? pr.data.response[0] : null);
+  if (!m) return { error: 'no_prediction' };
+  const out = { ...m, fid: fx.fixture.id, src: 'apif', at: new Date().toISOString() };
+  await db.from('bt_picks').update({ model: out }).eq('id', p.id);
+  return { ok: true, model: out, cost: 2, left: pr.left };
+}
+
 // Cierre automático: apuestas pendientes hechas desde picks cuyo partido ya debería haber terminado.
 // /scores con daysFrom cuesta 2 créditos por consulta: como mucho una por liga cada 30 min y 8 intentos por partido.
 const SETTLE_AFTER_MIN: Record<string, number> = { soccer: 115, basketball: 150, tennis: 90 };
@@ -521,6 +542,8 @@ Deno.serve(async req => {
         return json(await scan(body));
       case 'extras':
         return json(await extras(body));
+      case 'model':
+        return json(await model(body));
       case 'football': {
         // Comprueba la clave y si el plan da datos de la temporada actual: pide los partidos de ayer (1 consulta).
         if (!env('API_FOOTBALL_KEY')) return json({ error: 'missing_football_key' });

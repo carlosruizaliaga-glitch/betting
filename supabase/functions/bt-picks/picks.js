@@ -369,6 +369,16 @@ export function buildMatch(fx, events, stats) {
     corners: pair('Corner Kicks'), yellow: cards('Yellow Cards'), red: cards('Red Cards'), src: 'apif', at: new Date().toISOString() };
 }
 
+// Predicción de API-Football (/predictions): porcentajes de 1, X y 2 normalizados y su consejo, o null.
+export function parsePrediction(r) {
+  const pc = r && r.predictions && r.predictions.percent;
+  if (!pc) return null;
+  const n = v => parseFloat(String(v == null ? '' : v).replace('%', '').replace(',', '.'));
+  const h = n(pc.home), d = n(pc.draw), a = n(pc.away), s = h + d + a;
+  if (!(s > 0) || [h, d, a].some(x => !isFinite(x))) return null;
+  return { p: { '1': h / s, 'X': d / s, '2': a / s }, advice: String((r.predictions && r.predictions.advice) || '') };
+}
+
 // Movimiento: cambio de probabilidad justa (en puntos) desde la primera captura.
 export const moveOf = (p, o) => p.first_fair_prob && p.first_fair_prob[o] != null && p.fair_prob[o] != null ? p.fair_prob[o] - p.first_fair_prob[o] : 0;
 
