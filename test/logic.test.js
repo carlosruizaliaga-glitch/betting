@@ -179,3 +179,33 @@ console.log('OK · cerradas', s.n, '(' + s.w + 'G/' + s.l + 'P) · stake', s.ris
   assert.strictEqual(r0.level, 0);
   console.log('OK · confianza menos conservadora');
 }
+
+{
+  // Riesgo
+  const mv = [{ id: 'd1', date: '2026-10-01', type: 'deposit', amount: 100, created: 0 }];
+  const R = (n, date, stake, odds, result, extra) => Object.assign({ id: 'r' + n, date, created: n, stake, odds, result, legs: [{ sel: 'X', odds }], league: 'LaLiga', book: 'bet365' }, extra);
+  const rb = [R(1, '2026-10-02', 10, 2, 'L', { fair: 2.2 }), R(2, '2026-10-03', 5, 2, 'W', { fair: 1.8 }), R(3, '2026-10-04', 5, 2, 'P', { fair: 2.0 })];
+  const bb = L.bankBefore(rb, mv);
+  assert.strictEqual(bb.r1, 100); assert.strictEqual(bb.r2, 90); assert.strictEqual(bb.r3, 95);   // la banca baja tras perder y sube tras ganar
+  const rs = L.riskStats(rb, mv);
+  assert.strictEqual(rs.stake.n, 3);
+  assert(Math.abs(rs.stake.max - 0.1) < 1e-9);
+  assert.strictEqual(rs.stake.over5, 1);                                                             // las tres superan el 5 % de la banca
+  assert.strictEqual(rs.kelly.n, 3); assert(Math.abs(rs.kelly.noEdgePct - 2 / 3) < 1e-9);            // la 1 (2,0 vs 2,2) y la 3 (2,0 vs 2,0) no tienen ventaja
+  assert(Math.abs(rs.kelly.noEdgeMoney - 0.75) < 1e-9);                                               // 15 de 20 € sin ventaja
+  assert.strictEqual(rs.exposure.n, 1); assert.strictEqual(rs.exposure.risk, 5);
+  assert.strictEqual(rs.conc.topLeague, 'LaLiga');
+  // Simulación: determinista y con sentido
+  const many = [];
+  for (let i = 0; i < 40; i++) many.push(R(100 + i, '2026-10-' + String(1 + (i % 28)).padStart(2, '0'), 2, 2, i % 2 ? 'W' : 'L', { fair: 2.0 }));
+  const sim1 = L.riskSim(many, mv), sim2 = L.riskSim(many, mv);
+  assert.deepStrictEqual(sim1, sim2);
+  assert(sim1.p5 < sim1.p50 && sim1.p50 < sim1.p95 && sim1.pBelow50 < 0.01);                          // apuestas del 2 % sin ventaja: nunca se pierde la mitad
+  const big = many.map(b => Object.assign({}, b, { stake: 30 }));
+  const simB = L.riskSim(big, mv);
+  assert(simB.pBelow50 > sim1.pBelow50 && simB.pDD30 > 0.5);                                         // importes enormes: riesgo muchísimo mayor
+  assert.strictEqual(L.riskSim(many.slice(0, 3), mv), null);
+  assert(L.expectedLongestLoss(0.5, 100) >= 5 && L.expectedLongestLoss(0.5, 100) <= 8);
+  assert.strictEqual(L.expectedLongestLoss(0, 100), null);
+  console.log('OK · riesgo (tamaño sobre banca, Kelly, exposición, simulación)');
+}

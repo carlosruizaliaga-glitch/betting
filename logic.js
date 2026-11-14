@@ -427,6 +427,100 @@
     return { weeks: weeks.length, over: weeks.filter(k => -g[k] >= lossWeek).length };
   }
 
+  // ---------- Riesgo ----------
+  // Banca (depósitos netos + bonos + beneficio ya cerrado) justo antes de cada apuesta, por orden de fecha. Devuelve {id: banca}.
+  function bankBefore(bets, moves) {
+    const items = [];
+    (moves || []).forEach(m => items.push({ t: 'm', date: m.date, created: m.created || 0, m }));
+    bets.forEach(b => items.push({ t: 'b', date: b.date, created: b.created || 0, b }));
+    items.sort(byTime);
+    let acc = 0;
+    const out = {};
+    items.forEach(it => {
+      if (it.t === 'm') {
+        const a = Math.abs(+it.m.amount || 0);
+        acc += it.m.type === 'deposit' || it.m.type === 'bonus' ? a : it.m.type === 'withdrawal' ? -a : 0;
+      } else {
+        out[it.b.id] = acc;
+        if (isClosed(it.b)) acc += profit(it.b);
+      }
+    });
+    return out;
+  }
+
+  // Generador pseudoaleatorio con semilla (para que la simulación dé siempre los mismos números).
+  function rng(seed) {
+    let a = seed >>> 0;
+    return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+
+  // Medidas de riesgo de lo ya apostado: tamaño de apuesta sobre la banca, sobreapuesta frente a Kelly, exposición actual y concentración.
+  function riskStats(bets, moves, subset) {
+    const bb = bankBefore(bets, moves), all = bets;
+    bets = subset || bets;
+    const real = bets.filter(b => !b.bonus && (+b.stake) > 0);
+    const pcts = real.filter(b => bb[b.id] > 0).map(b => ({ b, pct: (+b.stake) / bb[b.id] })).sort((x, y) => x.pct - y.pct);
+    const arr = pcts.map(x => x.pct), n = arr.length;
+    const stake = { n, avg: n ? arr.reduce((a, x) => a + x, 0) / n : null, median: n ? arr[Math.floor(n / 2)] : null, max: n ? arr[n - 1] : null,
+      maxBet: n ? pcts[n - 1].b : null, over5: n ? arr.filter(x => x > 0.05).length / n : null };
+    // Kelly completo = ventaja / (cuota − 1), solo con cuota justa. Sin ventaja (≤ 0) el Kelly es 0: todo lo apostado es riesgo sin compensación.
+    const kl = pcts.filter(x => x.b.fair > 1 && x.b.odds > 1 && isSingle(x.b)).map(x => {
+      const e = x.b.odds / x.b.fair - 1, k = e > 0 ? e / (x.b.odds - 1) : 0;
+      return { stake: +x.b.stake, pct: x.pct, k, e };
+    });
+    const noEdge = kl.filter(x => x.k === 0), withEdge = kl.filter(x => x.k > 0);
+    const totalSt = kl.reduce((a, x) => a + x.stake, 0);
+    const kelly = { n: kl.length, noEdgePct: kl.length ? noEdge.length / kl.length : null, noEdgeMoney: totalSt > 0 ? noEdge.reduce((a, x) => a + x.stake, 0) / totalSt : null,
+      avgRatio: withEdge.length ? withEdge.reduce((a, x) => a + x.pct / x.k, 0) / withEdge.length : null, nEdge: withEdge.length };
+    const pend = all.filter(b => !isClosed(b) && !b.bonus);
+    const bankNow = (() => { let v = 0; (moves || []).forEach(m => { const a = Math.abs(+m.amount || 0); v += m.type === 'deposit' || m.type === 'bonus' ? a : m.type === 'withdrawal' ? -a : 0; }); all.filter(isClosed).forEach(b => { v += profit(b); }); return v; })();
+    const pendRisk = pend.reduce((a, b) => a + risk(b), 0);
+    const pendEv = pend.filter(b => b.fair > 1 && b.odds > 1).reduce((a, b) => a + risk(b) * (b.odds / b.fair - 1), 0);
+    const exposure = { n: pend.length, risk: r2(pendRisk), pct: bankNow > 0 ? pendRisk / bankNow : null, ev: r2(pendEv), bank: r2(bankNow) };
+    // Concentración: parte del dinero apostado en la liga principal y el día con más dinero en juego.
+    const sums = {}, byDay = {};
+    real.forEach(b => { const k = b.league || '—'; sums[k] = (sums[k] || 0) + risk(b); byDay[b.date] = (byDay[b.date] || 0) + risk(b); });
+    const totAll = Object.values(sums).reduce((a, x) => a + x, 0), topK = Object.keys(sums).sort((a, c) => sums[c] - sums[a])[0];
+    const dayK = Object.keys(byDay).sort((a, c) => byDay[c] - byDay[a])[0];
+    const conc = { topLeague: topK || null, topShare: topK && totAll > 0 ? sums[topK] / totAll : null,
+      maxDay: dayK || null, maxDayRisk: dayK ? r2(byDay[dayK]) : null, maxDayPct: dayK && bb && real.length ? byDay[dayK] / Math.max(1e-9, (() => { const f = real.filter(b => b.date === dayK)[0]; return bb[f.id] || 0; })()) : null };
+    // Peor caída del beneficio en porcentaje de la banca que había en el pico.
+    const h = profitHistory(all), dd = drawdown(all);
+    let peakBank = 0;
+    if (h.length && dd.max < 0) { let prof = 0, pk = 0; h.forEach(pt => { if (pt.value > pk) pk = pt.value; }); const dep = bankNow - h[h.length - 1].value; peakBank = dep + pk; }
+    return { stake, kelly, exposure, conc, ddPct: peakBank > 0 && dd.max < 0 ? dd.max / peakBank : null, dd };
+  }
+
+  // Simulación de 100 apuestas "como las tuyas": cada paso sale de tus apuestas reales (importe como parte de la banca y cuota)
+  // y gana con la probabilidad justa (o, si no la hay, la de la cuota con un 5 % de margen). Los importes se componen sobre la banca.
+  function riskSim(bets, moves, opts) {
+    const o = Object.assign({ n: 100, trials: 4000, seed: 12345 }, opts || {});
+    const bb = bankBefore(bets, moves);
+    const pool = bets.filter(b => !b.bonus && isClosed(b) && b.result !== 'CO' && isSingle(b) && b.odds > 1 && +b.stake > 0 && bb[b.id] > 0)
+      .map(b => ({ f: Math.min(0.5, +b.stake / bb[b.id]), o: +b.odds, p: b.fair > 1 ? Math.min(0.98, 1 / b.fair) : Math.min(0.98, 1 / (b.odds * 1.05)) }));
+    if (pool.length < 5) return null;
+    const rnd = rng(o.seed), finals = [], dds = [];
+    for (let t = 0; t < o.trials; t++) {
+      let m = 1, peak = 1, ddMax = 0;
+      for (let i = 0; i < o.n; i++) {
+        const x = pool[Math.floor(rnd() * pool.length)];
+        m *= rnd() < x.p ? 1 + x.f * (x.o - 1) : 1 - x.f;
+        if (m > peak) peak = m;
+        const d = 1 - m / peak; if (d > ddMax) ddMax = d;
+      }
+      finals.push(m); dds.push(ddMax);
+    }
+    finals.sort((a, c) => a - c);
+    const q = pr => finals[Math.min(finals.length - 1, Math.floor(pr * finals.length))];
+    const frac = fn => finals.filter(fn).length / finals.length;
+    const ev = pool.reduce((a, x) => a + x.f * (x.p * x.o - 1), 0) / pool.length;
+    return { n: o.n, trials: o.trials, pool: pool.length, p5: q(0.05), p25: q(0.25), p50: q(0.5), p75: q(0.75), p95: q(0.95),
+      pBelow75: frac(x => x < 0.75), pBelow50: frac(x => x < 0.5), pAbove: frac(x => x > 1), pDD30: dds.filter(d => d >= 0.3).length / dds.length, evPerBet: ev };
+  }
+
+  // Racha de pérdidas más larga que cabe esperar en n apuestas si pierdes una de cada 1/q.
+  const expectedLongestLoss = (q, n) => q > 0 && q < 1 && n > 0 ? Math.max(1, Math.round(Math.log(n * (1 - q)) / Math.log(1 / q))) : null;
+
   // Horas que faltaban para el partido cuando se apuntó la apuesta (null si no se sabe).
   const hoursBefore = b => {
     const t = b.commence ? new Date(b.commence).getTime() : NaN;
@@ -469,6 +563,6 @@
     funds, stakeFor, suggestStake, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
     clvBy, edgeAtBet, clvSeries, hoursBefore, hourBucket, HOUR_KEYS, fairDrift,
     expectedVsReal, luckTest, normCdf, CAL_KEYS, calibration, monthly, daily, drawdown, streakRecords, volatility, crossTab,
-    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks, pickConfidence, stakeByConfidence, setClvMode, clvOf, clvSel, clvPaid, clvParts };
+    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks, pickConfidence, stakeByConfidence, bankBefore, riskStats, riskSim, expectedLongestLoss, setClvMode, clvOf, clvSel, clvPaid, clvParts };
   if (typeof module !== 'undefined') module.exports = L; else root.Logic = L;
 })(typeof window !== 'undefined' ? window : globalThis);

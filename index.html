@@ -247,6 +247,13 @@
     .tabs2 { gap: 18px; overflow-x: auto; scrollbar-width: none; }
     .tabs2 button { flex: none; }
     body.hide-amt .concl b.pos, body.hide-amt .concl b.neg { letter-spacing: .1em; }
+    .gauge { position: relative; height: 10px; border-radius: 6px; background: var(--line2); overflow: hidden; }
+    .gauge i { display: block; height: 100%; border-radius: 6px; }
+    .gauge u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--bg); opacity: .9; }
+    .rng { position: relative; height: 14px; margin-top: 10px; background: var(--line2); border-radius: 7px; }
+    .rng .rngbar { position: absolute; top: 3px; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--cyan) 60%, transparent); }
+    .rng .rngm { position: absolute; top: 0; width: 3px; height: 14px; background: var(--text); border-radius: 2px; text-decoration: none; }
+    .rng .rng100 { position: absolute; top: -4px; width: 2px; height: 22px; background: var(--yellow); }
     .sugg { margin-top: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card2); font: 500 11px/1.6 var(--mono); letter-spacing: .02em; }
     .sugg button { margin-left: 6px; padding: 3px 10px; }
     .pksec { font: 600 10px/1 var(--mono); letter-spacing: .1em; color: var(--muted); margin: 14px 2px 0; }
@@ -282,9 +289,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=40"></script>
-  <script src="logic.js?v=40"></script>
-  <script src="store.js?v=40"></script>
-  <script src="app.js?v=40"></script>
+  <script src="version.js?v=43"></script>
+  <script src="logic.js?v=43"></script>
+  <script src="store.js?v=43"></script>
+  <script src="app.js?v=43"></script>
 </body>
 </html>

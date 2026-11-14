@@ -1228,6 +1228,17 @@
     const ev = L.expectedVsReal(bs), lt = L.luckTest(bs), cal = L.calibration(bs), mon = L.monthly(bs), dd = L.drawdown(bs), rec = L.streakRecords(bs), vol = L.volatility(bs);
     const bfm = L.belowFairByMonth(bs), svs = L.stakeVsSuggested(bs, st0.unit, kellyEff(st0.kelly)), vo = L.volume(bs), tl = L.tilt(bs), lw = L.limitWeeks(bs, st0.lossWeek);
     const ps = prev ? L.summarize(prev) : null, pclv = prev ? L.clvStats(prev) : null;
+    const rk = L.riskStats(all, moves(), bs), sim = L.riskSim(all, moves());
+    const pctS0 = x => pct(x, x < 0.1 ? 1 : 0);
+    const pctS = (x, d) => x == null ? '—' : pct(x, d == null ? 0 : d);
+    // Nivel de riesgo (0–8 puntos): tamaño medio de apuesta, dinero apostado sin ventaja, simulación y peor caída.
+    let rpts = 0;
+    const avgSt = rk.stake.avg;
+    if (avgSt != null) rpts += avgSt > 0.05 ? 2 : avgSt > 0.02 ? 1 : 0;
+    if (rk.kelly.noEdgeMoney != null) rpts += rk.kelly.noEdgeMoney > 0.6 ? 2 : rk.kelly.noEdgeMoney > 0.3 ? 1 : 0;
+    if (sim) rpts += sim.pBelow75 > 0.3 ? 2 : sim.pBelow75 > 0.1 ? 1 : 0;
+    if (rk.ddPct != null) rpts += rk.ddPct < -0.3 ? 2 : rk.ddPct < -0.15 ? 1 : 0;
+    const rLevel = rpts >= 5 ? ['ALTO', 'neg'] : rpts >= 3 ? ['MEDIO', 'yellow'] : ['BAJO', 'pos'];
 
     // ---- frases ----
     const cResult = s.n ? `Llevas <b class="${cls(s.profit)}">${seur(s.profit)}</b> en ${s.n} apuestas cerradas, con un yield de <b class="${cls(s.yield)}">${s.yield == null ? '—' : spct(s.yield, 1)}</b> y un ${pct(s.winPct, 0)} de acierto.` : 'Aún no hay apuestas cerradas con estos filtros.';
@@ -1252,7 +1263,8 @@
     // ---- pestañas ----
     const secRes = `
       <h2>CONCLUSIONES</h2>
-      <div class="card">${concl(cResult)}${concl(cLuck)}${cIsLuck ? concl(cIsLuck) : ''}${concl(cClv)}${concl(cDisc)}</div>
+      <div class="card">${concl(cResult)}${concl(cLuck)}${cIsLuck ? concl(cIsLuck) : ''}${concl(cClv)}${concl(cDisc)}
+        ${avgSt != null ? concl(`Riesgo <b class="${rLevel[1]}">${rLevel[0].toLowerCase()}</b>: apuestas de media un ${pctS0(avgSt)} de tu banca${sim ? ` y en 100 apuestas como las tuyas hay un ${pctS0(sim.pBelow50)} de probabilidad de perder la mitad` : ''}. <a href="#" data-gorisk style="color:var(--pos)">Ver riesgo</a>`) : ''}</div>
       ${prev ? `<h2>FRENTE AL ${pr.prevLabel}</h2>
       <div class="card">
         ${kv('APUESTAS', cmp(s.n, ps.n, x => x, true))}
@@ -1297,6 +1309,70 @@
         ${kv('MÁS GANADAS SEGUIDAS', rec.win)}${kv('MÁS PERDIDAS SEGUIDAS', rec.loss)}
         ${kv('VARIACIÓN POR APUESTA', vol ? `${eur(vol.sd)}${vol.perStake != null ? ` · ${fnum(vol.perStake, 1)} × importe medio` : ''}` : '—')}
         <div class="muted hint" style="margin-top:6px">Con cuotas altas la variación sube: rachas largas de pérdidas son normales aunque el sistema funcione.</div>
+      </div>`;
+
+    // Barra de medidor: valor sobre un máximo, con marcas en los umbrales (verde hasta el primero, amarillo hasta el segundo, rojo después).
+    const gauge = (v, max, a, b) => `<div class="gauge"><i style="width:${Math.min(100, Math.max(1, v / max * 100)).toFixed(1)}%;background:var(--${v > b ? 'neg' : v > a ? 'yellow' : 'pos'})"></i><u style="left:${a / max * 100}%"></u><u style="left:${b / max * 100}%"></u></div>`;
+    const qLoss = s.n ? 1 - (s.w + 0) / Math.max(1, s.w + s.l) : null;
+    const secRisk = `
+      <h2>NIVEL DE RIESGO</h2>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span class="tag" style="font-size:12px;padding:4px 12px;color:var(--${rLevel[1]});border:1px solid var(--${rLevel[1]});background:var(--card2)">RIESGO ${rLevel[0]}</span><span class="muted hint">según tamaño de apuesta, apuestas sin ventaja, simulación y peor caída</span></div>
+        ${avgSt == null ? concl('Aún no hay apuestas con banca para medir el riesgo.') : concl(`Apuestas de media un <b class="${avgSt > 0.05 ? 'neg' : avgSt > 0.02 ? 'yellow' : 'pos'}">${pctS(avgSt, 1)}</b> de tu banca por apuesta (la mayor, ${pctS(rk.stake.max, 1)}). ${avgSt > 0.05 ? 'Es mucho: con esos importes unas pocas pérdidas seguidas se notan enseguida. Lo habitual en profesionales es el 1–3 %.' : avgSt > 0.02 ? 'Es un nivel moderado: aceptable si tienes ventaja real.' : 'Es un nivel prudente.'}`)}
+        ${rk.kelly.n ? concl(`El <b class="${rk.kelly.noEdgeMoney > 0.6 ? 'neg' : rk.kelly.noEdgeMoney > 0.3 ? 'yellow' : 'pos'}">${pctS(rk.kelly.noEdgeMoney, 0)}</b> del dinero apostado desde picks fue en apuestas sin ventaja sobre la cuota justa: arriesgas sin compensación.`) : ''}
+        ${sim ? concl(`Si sigues apostando como hasta ahora, en ${sim.n} apuestas lo más probable es acabar con el <b class="${cls(sim.p50 - 1)}">${pctS(sim.p50, 0)}</b> de tu banca de hoy; 1 de cada 20 veces con menos del <b class="neg">${pctS(sim.p5, 0)}</b>. Probabilidad de perder la mitad: <b class="${sim.pBelow50 > 0.1 ? 'neg' : ''}">${pctS(sim.pBelow50, 0)}</b>.`) : concl('Hacen falta al menos 5 apuestas cerradas para simular el riesgo.')}
+      </div>
+
+      <h2>TAMAÑO DE TUS APUESTAS · % DE LA BANCA</h2>
+      <div class="card">
+        ${avgSt == null ? '<div class="muted">SIN DATOS</div>' : `${gauge(avgSt, 0.1, 0.02, 0.05)}
+        <div class="muted" style="position:relative;height:16px;margin:4px 0 8px"><span style="position:absolute;left:0">0 %</span><span style="position:absolute;left:20%;transform:translateX(-50%)">2 %</span><span style="position:absolute;left:50%;transform:translateX(-50%)">5 %</span><span style="position:absolute;right:0">10 %+</span></div>
+        ${kv('MEDIA', pctS(avgSt, 1))}${kv('MEDIANA', pctS(rk.stake.median, 1))}
+        ${kv('LA MAYOR', `${pctS(rk.stake.max, 1)}${rk.stake.maxBet ? ` · ${esc(selText(rk.stake.maxBet))}` : ''}`)}
+        ${kv('APUESTAS POR ENCIMA DEL 5 %', pctS(rk.stake.over5, 0))}
+        <div class="muted hint" style="margin-top:6px">Importe de cada apuesta dividido entre la banca (depósitos netos + bonos + beneficio) justo antes de apostar. Verde hasta el 2 %, amarillo hasta el 5 %, rojo por encima.</div>`}
+      </div>
+
+      <h2>EXPOSICIÓN AHORA</h2>
+      <div class="card">
+        ${rk.exposure.n ? concl(`Tienes <b>${rk.exposure.n}</b> apuesta${rk.exposure.n > 1 ? 's' : ''} pendiente${rk.exposure.n > 1 ? 's' : ''} con <b>${eur(rk.exposure.risk)}</b> en juego${rk.exposure.pct != null ? `, un <b class="${rk.exposure.pct > 0.1 ? 'neg' : rk.exposure.pct > 0.05 ? 'yellow' : 'pos'}">${pctS(rk.exposure.pct, 1)}</b> de tu banca. Si pierdes todas, tu banca baja a ${eur(rk.exposure.bank - rk.exposure.risk)}.` : '.'}`) : concl('No tienes apuestas pendientes: ahora mismo no hay dinero en juego.')}
+        ${kv('PENDIENTES', rk.exposure.n)}${kv('EN JUEGO', eur(rk.exposure.risk))}${kv('BANCA ACTUAL', eur(rk.exposure.bank))}
+        ${kv('VALOR ESPERADO DE LAS PENDIENTES', rk.exposure.n ? `<span class="${cls(rk.exposure.ev)}">${seur(rk.exposure.ev)}</span>` : '—')}
+      </div>
+
+      <h2>SOBREAPUESTA · ¿APUESTAS MÁS DE LO QUE DICE LA VENTAJA?</h2>
+      <div class="card">
+        ${rk.kelly.n ? `${kv('APUESTAS SIN VENTAJA', `${pctS(rk.kelly.noEdgePct, 0)} (${pctS(rk.kelly.noEdgeMoney, 0)} DEL DINERO)`)}
+        ${kv('CON VENTAJA: TU IMPORTE FRENTE A KELLY', rk.kelly.avgRatio == null ? '—' : `<span class="${rk.kelly.avgRatio > 1 ? 'neg' : rk.kelly.avgRatio > 0.5 ? 'yellow' : 'pos'}">${fnum(rk.kelly.avgRatio, 2)} ×</span>`)}
+        <div class="muted hint" style="margin-top:6px">Kelly completo es el importe que maximiza el crecimiento si la ventaja es exacta; apostar más de 1× es entrar en zona de ruina, y los profesionales usan entre ⅕ y ½ (0,2 a 0,5 ×). Sin ventaja, lo que Kelly recomienda apostar es 0. Cuenta solo apuestas simples desde pick (${rk.kelly.n}).</div>` : '<div class="muted hint">Sin apuestas desde pick con cuota justa.</div>'}
+      </div>
+
+      <h2>SIMULACIÓN · ${sim ? sim.n : 100} APUESTAS COMO LAS TUYAS</h2>
+      <div class="card">
+        ${sim ? `${concl(`Se repiten ${sim.trials.toLocaleString('es-ES')} veces ${sim.n} apuestas sacadas de tu historial (mismos importes sobre la banca y cuotas; ganan con la probabilidad justa). Tu banca de hoy es el 100 %.`)}
+        <div class="rng"><i class="rngbar" style="left:${Math.max(0, Math.min(100, sim.p5 / Math.max(1.5, sim.p95) * 66)).toFixed(1)}%;width:${Math.max(2, (Math.min(sim.p95, Math.max(1.5, sim.p95)) - sim.p5) / Math.max(1.5, sim.p95) * 66).toFixed(1)}%"></i><u class="rngm" style="left:${(sim.p50 / Math.max(1.5, sim.p95) * 66).toFixed(1)}%"></u><s class="rng100" style="left:${(1 / Math.max(1.5, sim.p95) * 66).toFixed(1)}%"></s></div>
+        <div class="muted" style="display:flex;justify-content:space-between;margin:4px 0 8px"><span>PEOR (1 DE 20)</span><span>NORMAL</span><span>MEJOR (1 DE 20)</span></div>
+        <table class="tbl"><tr><th></th><th>BANCA FINAL</th></tr>
+          <tr><td class="neg">PESIMISTA · 5 %</td><td class="num">${pctS(sim.p5, 0)}</td></tr><tr><td>BAJO · 25 %</td><td class="num">${pctS(sim.p25, 0)}</td></tr>
+          <tr><td><b>NORMAL · 50 %</b></td><td class="num"><b class="${cls(sim.p50 - 1)}">${pctS(sim.p50, 0)}</b></td></tr><tr><td>ALTO · 75 %</td><td class="num">${pctS(sim.p75, 0)}</td></tr>
+          <tr><td class="pos">OPTIMISTA · 95 %</td><td class="num">${pctS(sim.p95, 0)}</td></tr></table>
+        ${kv('ACABAR CON MÁS BANCA QUE HOY', pctS(sim.pAbove, 0))}${kv('PERDER MÁS DE UN 25 %', pctS(sim.pBelow75, 0))}${kv('PERDER MÁS DE LA MITAD', pctS(sim.pBelow50, 0))}
+        ${kv('CAÍDA DE UN 30 % EN ALGÚN MOMENTO', pctS(sim.pDD30, 0))}
+        <div class="muted hint" style="margin-top:6px">Es una estimación, no una predicción: usa tus importes y cuotas pasadas, y la probabilidad justa. Si apuestas menos o con más ventaja, estas cifras mejoran.</div>` : '<div class="muted hint">Hacen falta al menos 5 apuestas cerradas simples con importe y cuota.</div>'}
+      </div>
+
+      <h2>CAÍDAS Y RACHAS ESPERABLES</h2>
+      <div class="card">
+        ${kv('PEOR CAÍDA (SOBRE LA BANCA)', rk.ddPct == null ? 'SIN CAÍDAS' : `<span class="neg">${pctS(rk.ddPct, 0)}</span> · ${seur(rk.dd.max)}`)}
+        ${qLoss != null && s.n >= 5 ? `${kv('PÉRDIDAS SEGUIDAS MÁS LARGA', rec.loss)}${kv('LO ESPERABLE EN 100 APUESTAS', `~${L.expectedLongestLoss(qLoss, 100)}`)}
+        <div class="muted hint" style="margin-top:6px">Con un ${pct(qLoss, 0)} de apuestas perdidas, una racha de unas ${L.expectedLongestLoss(qLoss, 100)} pérdidas seguidas es normal en 100 apuestas. Prepara el importe para aguantarla.</div>` : ''}
+      </div>
+
+      <h2>CONCENTRACIÓN</h2>
+      <div class="card">
+        ${kv('LIGA CON MÁS DINERO', rk.conc.topLeague ? `${esc(rk.conc.topLeague)} · ${pctS(rk.conc.topShare, 0)}` : '—')}
+        ${kv('DÍA CON MÁS DINERO EN JUEGO', rk.conc.maxDay ? `${fdate(rk.conc.maxDay)} · ${eur(rk.conc.maxDayRisk)}${rk.conc.maxDayPct != null ? ` · ${pctS(rk.conc.maxDayPct, 0)} DE LA BANCA` : ''}` : '—')}
+        <div class="muted hint" style="margin-top:6px">Mucho dinero en una sola liga o un solo día hace que un mal día pese más.</div>
       </div>`;
 
     const secClv = `
@@ -1389,7 +1465,7 @@
     const FLS = { book: 'Casa', sport: 'Deporte', league: 'Liga', type: 'Tipo', origin: 'Origen' };
     const act = Object.keys(FLS).filter(k => statsF[k]).map(k => [k, `${FLS[k]}: ${k === 'origin' ? (statsF.origin === 'pick' ? 'desde pick' : 'manual') : statsF[k]}`]);
     if (statsF.from || statsF.to) act.unshift(['dates', `${statsF.from ? fdate(statsF.from) : '…'} – ${statsF.to ? fdate(statsF.to) : '…'}`]);
-    const tabs = [['res', 'RESUMEN'], ['rend', 'RENDIMIENTO'], ['clv', 'CLV'], ['disc', 'DISCIPLINA'], ['det', 'DETALLE']];
+    const tabs = [['res', 'RESUMEN'], ['rend', 'RENDIMIENTO'], ['risk', 'RIESGO'], ['clv', 'CLV'], ['disc', 'DISCIPLINA'], ['det', 'DETALLE']];
     if (!tabs.some(x => x[0] === statsTab)) statsTab = 'res';
     view.innerHTML = `
       <div class="row" style="gap:8px;margin-top:12px">
@@ -1397,9 +1473,10 @@
         <button class="fbtn" id="statsF" aria-label="Filtros">${icon('filter', 18)}${act.length ? `<span>${act.length}</span>` : ''}</button></div>
       ${act.length ? `<div class="chips scroll-x" style="margin-top:8px">${act.map(([k, txt]) => `<button class="on" data-sfx="${k}">${esc(txt)} <i>×</i></button>`).join('')}</div>` : ''}
       <div class="tabs2 scroll-x">${tabs.map(([k, tt]) => `<button data-stab="${k}" class="${statsTab === k ? 'on' : ''}">${tt}</button>`).join('')}</div>
-      ${{ res: secRes, rend: secRend, clv: secClv, disc: secDisc, det: secDet }[statsTab]}`;
+      ${{ res: secRes, rend: secRend, risk: secRisk, clv: secClv, disc: secDisc, det: secDet }[statsTab]}`;
 
     view.querySelectorAll('[data-stab]').forEach(el => el.onclick = () => { statsTab = el.dataset.stab; render(); window.scrollTo(0, 0); });
+    view.querySelectorAll('[data-gorisk]').forEach(el => el.onclick = ev => { ev.preventDefault(); statsTab = 'risk'; render(); window.scrollTo(0, 0); });
     view.querySelectorAll('[data-clvm]').forEach(el => el.onclick = () => saveSettings({ clvMode: el.dataset.clvm }));
     view.querySelectorAll('[data-p]').forEach(el => el.onclick = () => { statsPeriod = el.dataset.p; render(); });
     view.querySelectorAll('[data-by]').forEach(el => el.onclick = () => { statsBy = el.dataset.by; render(); });
