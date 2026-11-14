@@ -241,6 +241,22 @@
     .concl { font: 400 13px/1.55 var(--sans); color: var(--text); padding: 8px 0; border-bottom: 1px solid var(--line2); }
     .concl:last-child { border-bottom: 0; }
     .concl b { font-weight: 600; }
+    .hbr { display: grid; grid-template-columns: 84px 1fr 72px; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 8px; }
+    .hbr.sel { background: color-mix(in srgb, var(--text) 8%, transparent); }
+    .hbl { font: 11px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hbt { position: relative; height: 14px; background: var(--line2); border-radius: 7px; overflow: hidden; }
+    .hbt i { position: absolute; top: 0; bottom: 0; border-radius: 7px; }
+    .hbt.c::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--muted); opacity: .6; }
+    .hbv { text-align: right; font: 600 12px var(--mono); }
+    details.vt { margin-top: 6px; }
+    details.vt summary { cursor: pointer; color: var(--muted); font: 600 11px var(--mono); letter-spacing: .1em; padding: 8px 0 4px; list-style: none; }
+    details.vt summary::-webkit-details-marker { display: none; }
+    details.vt summary::before { content: '▸ '; }
+    details.vt[open] summary::before { content: '▾ '; }
+    .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center; margin-bottom: 4px; }
+    .tiles > div { background: var(--card2); border: 1px solid var(--line2); border-radius: 12px; padding: 8px 2px; }
+    .tiles .muted { font-size: 8px; letter-spacing: .04em; margin-bottom: 4px; }
+    .tiles b { font-size: 15px; }
     .ivbox { position: relative; touch-action: pan-y; }
     .ivbox .tip { position: fixed; top: 0; left: 0; max-width: calc(100vw - 16px); pointer-events: none; background: var(--raise); border: 1px solid var(--line); border-radius: 12px; padding: 9px 14px; font-size: 15px; line-height: 1.35; white-space: normal; display: none; z-index: 50; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
     .cal i.sel { outline: 2px solid var(--text); outline-offset: -1px; }
@@ -294,9 +310,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=62"></script>
-  <script src="logic.js?v=62"></script>
-  <script src="store.js?v=62"></script>
-  <script src="app.js?v=62"></script>
+  <script src="version.js?v=63"></script>
+  <script src="logic.js?v=63"></script>
+  <script src="store.js?v=63"></script>
+  <script src="app.js?v=63"></script>
 </body>
 </html>

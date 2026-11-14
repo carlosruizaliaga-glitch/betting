@@ -383,7 +383,29 @@
     toast(`${L.RESULTS[r].label} · ${seur(L.profit(nb))}`);
   }
 
+  // Barras horizontales (con signo) interactivas: items = [{label, v, val, tip, col?, cls?}]
+  function hBars(items) {
+    if (!items.length) return '<div class="muted">SIN DATOS</div>';
+    const max = Math.max(0.01, ...items.map(x => Math.abs(x.v))), hasNeg = items.some(x => x.v < 0), hasPos = items.some(x => x.v > 0);
+    const rows = items.map(x => {
+      const w = Math.abs(x.v) / max * 100, pos = x.v >= 0, half = hasNeg && hasPos;
+      const st = half ? `${pos ? 'left' : 'right'}:50%;width:${(w / 2).toFixed(1)}%` : `${hasNeg ? 'right' : 'left'}:0;width:${w.toFixed(1)}%`;
+      return `<div class="hbr" data-tip="${esc(x.tip)}"><span class="hbl">${esc(x.label)}</span><div class="hbt${half ? ' c' : ''}"><i style="${st};background:${x.col || `var(--${pos ? 'pos' : 'neg'})`}"></i></div><span class="hbv ${x.cls != null ? x.cls : cls(x.v)}">${x.val}</span></div>`;
+    }).join('');
+    return `<div class="ivbox">${rows}<div class="tip"></div></div>`;
+  }
+  const withTable = (chart, table) => `${chart}<details class="vt"><summary>VER TABLA</summary>${table}</details>`;
+
   function periodTable(rows, pend) {
+    const order = ['HOY', '7D', 'MES', 'AÑO', 'TOTAL'];
+    const items = rows.map(r => ({ label: r.key, v: r.profit, val: seur(r.profit), tip: `<b>${r.key}</b> · ${r.n} apuestas<br>Apostado ${eur(r.risk)}<br>Beneficio <b class="${cls(r.profit)}">${seur(r.profit)}</b><br>Yield ${r.yield == null ? '—' : spct(r.yield, 1)}` }));
+    if (pend) {
+      items.unshift({ label: 'PEND. MÁX.', v: pend.max, val: seur(pend.max), col: 'var(--cyan)', cls: 'pos', tip: `<b>${pend.n} pendientes</b> · apostado ${eur(pend.risk)}<br>Si aciertas todas <b class="pos">${seur(pend.max)}</b><br>Bankroll → ${eur(pend.bankMax)}` });
+      if (pend.ev != null) items.splice(1, 0, { label: 'PEND. ESP.', v: pend.ev, val: seur(pend.ev), col: 'var(--muted)', tip: `<b>Esperado</b> de las pendientes<br><b class="${cls(pend.ev)}">${seur(pend.ev)}</b><br>Bankroll → ${eur(pend.bankEv)}` });
+    }
+    return withTable(hBars(items), periodTableRaw(rows, pend));
+  }
+  function periodTableRaw(rows, pend) {
     return `<table class="tbl"><tr><th></th><th>N</th><th>APOSTADO</th><th>BENEFICIO</th><th>YIELD</th></tr>
       ${pend ? `<tr><td>PEND.</td><td class="num">${pend.n}</td><td class="num">${eur(pend.risk)}</td><td class="num pos">${seur(pend.max)}</td><td class="num muted">→ ${eur(pend.bankMax)}</td></tr>
       ${pend.ev != null ? `<tr><td class="muted">ESPER.</td><td></td><td></td><td class="num ${cls(pend.ev)}">${seur(pend.ev)}</td><td class="num muted">→ ${eur(pend.bankEv)}</td></tr>` : ''}` : ''}
@@ -1246,11 +1268,32 @@
   // Tabla genérica de rendimiento agrupado.
   function perfTable(rows) {
     if (!rows.some(r => r.n)) return '<div class="muted">SIN DATOS</div>';
+    const items = rows.filter(r => r.n).map(g => ({ label: g.key, v: g.profit, val: seur(g.profit),
+      tip: `<b>${esc(g.key)}</b><br>${g.n} apuestas · apostado ${eur(g.risk)}<br>Beneficio <b class="${cls(g.profit)}">${seur(g.profit)}</b> · yield ${g.yield == null ? '—' : spct(g.yield, 1)}<br>Acierto ${pct(g.winPct, 0)}` }));
+    return withTable(hBars(items), perfTableRaw(rows));
+  }
+  function perfTableRaw(rows) {
     return `<table class="tbl"><tr><th></th><th>N</th><th>APOST.</th><th>BENEF.</th><th>YIELD</th><th>ACIERTO</th></tr>
       ${rows.filter(r => r.n).map(g => `<tr><td class="ellipsis" style="max-width:110px">${esc(g.key)}</td><td class="num">${g.n}</td><td class="num">${mny(g.risk)}</td>
         <td class="num ${cls(g.profit)}">${g.profit > 0 ? '+' : ''}${mny(g.profit)}</td><td class="num ${cls(g.yield)}">${g.yield == null ? '—' : spct(g.yield, 0)}</td><td class="num">${pct(g.winPct, 0)}</td></tr>`).join('')}</table>`;
   }
 
+  // Pares de barras por tramo de probabilidad: acierto real frente al esperado
+  function pairChart(bands) {
+    if (!bands.length) return '<div class="muted">SIN DATOS</div>';
+    const W = 320, H = 140, pt = 14, pb = 30, n = bands.length, slot = W / n, bw = Math.min(34, slot / 2 - 6);
+    const y = v => H - pb - (H - pt - pb) * v;
+    const g = bands.map((x, i) => {
+      const cx = i * slot + slot / 2, tip = `<b>${pct(x.lo, 0)}–${pct(Math.min(x.hi, 1), 0)}</b> (cuota ${odds(1 / Math.min(x.hi, 1))}–${odds(1 / x.lo)})<br>${x.n} apuestas<br>Real <b class="${cls(x.hit - x.exp)}">${pct(x.hit, 0)}</b> · esperado ${pct(x.exp, 0)}`;
+      return `<rect x="${(cx - bw - 2).toFixed(1)}" y="${y(x.hit).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, H - pb - y(x.hit)).toFixed(1)}" rx="3" fill="var(--${x.hit >= x.exp ? 'pos' : 'neg'})" opacity=".85"/>
+        <rect x="${(cx + 2).toFixed(1)}" y="${y(x.exp).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, H - pb - y(x.exp)).toFixed(1)}" rx="3" fill="var(--muted)" opacity=".55"/>
+        <text x="${cx.toFixed(1)}" y="${H - 16}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--mono)">${pct(x.lo, 0)}–${pct(Math.min(x.hi, 1), 0)}</text>
+        <text x="${cx.toFixed(1)}" y="${H - 5}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--mono)">${odds(1 / Math.min(x.hi, 1))}–${odds(1 / x.lo)}</text>
+        <rect class="iv" x="${(i * slot).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${H}" fill="transparent" data-tip="${esc(tip)}"/>`;
+    }).join('');
+    return `<div class="ivbox"><svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><line x1="0" x2="${W}" y1="${H - pb}" y2="${H - pb}" stroke="var(--line)"/>${g}</svg><div class="tip"></div></div>
+      <div class="muted" style="font-size:11px;margin-top:4px"><span class="pos">■ REAL</span> (rojo si queda por debajo) · <span>■ ESPERADO</span></div>`;
+  }
   // Barras interactivas: items = [{v, col, tip}], refs = [{v, col, label}]
   function barChart(items, refs) {
     if (!items.length) return '<div class="muted hint">SIN DATOS</div>';
@@ -1442,10 +1485,10 @@
         ${sim ? `${concl(`Se repiten ${sim.trials.toLocaleString('es-ES')} veces ${sim.n} apuestas sacadas de tu historial (mismos importes sobre la banca y cuotas; ganan con la probabilidad justa). Tu banca de hoy es el 100 %.`)}
         ${fanChart(sim.fan)}
         <div class="muted" style="margin:4px 0 8px;font-size:11px"><span style="color:var(--cyan)">━ NORMAL</span> · franja oscura: rango habitual (50 %) · franja clara: de mal a buen día (90 %) · <span style="color:var(--yellow)">┄ TU BANCA DE HOY</span></div>
-        <table class="tbl"><tr><th></th><th>BANCA FINAL</th></tr>
+        ${withTable(`<div class="tiles">${[['PESIMISTA · 5 %', sim.p5, 'neg'], ['BAJO · 25 %', sim.p25, ''], ['NORMAL · 50 %', sim.p50, cls(sim.p50 - 1)], ['ALTO · 75 %', sim.p75, ''], ['OPTIMISTA · 95 %', sim.p95, 'pos']].map(([t, v, c]) => `<div><div class="muted">${t}</div><b class="${c}">${pctS(v, 0)}</b></div>`).join('')}</div>`, `<table class="tbl"><tr><th></th><th>BANCA FINAL</th></tr>
           <tr><td class="neg">PESIMISTA · 5 %</td><td class="num">${pctS(sim.p5, 0)}</td></tr><tr><td>BAJO · 25 %</td><td class="num">${pctS(sim.p25, 0)}</td></tr>
           <tr><td><b>NORMAL · 50 %</b></td><td class="num"><b class="${cls(sim.p50 - 1)}">${pctS(sim.p50, 0)}</b></td></tr><tr><td>ALTO · 75 %</td><td class="num">${pctS(sim.p75, 0)}</td></tr>
-          <tr><td class="pos">OPTIMISTA · 95 %</td><td class="num">${pctS(sim.p95, 0)}</td></tr></table>
+          <tr><td class="pos">OPTIMISTA · 95 %</td><td class="num">${pctS(sim.p95, 0)}</td></tr></table>`)}
         ${kv('ACABAR CON MÁS BANCA QUE HOY', pctS(sim.pAbove, 0))}${kv('PERDER MÁS DE UN 25 %', pctS(sim.pBelow75, 0))}${kv('PERDER MÁS DE LA MITAD', pctS(sim.pBelow50, 0))}
         ${kv('CAÍDA DE UN 30 % EN ALGÚN MOMENTO', pctS(sim.pDD30, 0))}
         <div class="muted hint" style="margin-top:6px">Es una estimación, no una predicción: usa tus importes y cuotas pasadas, y la probabilidad justa. Si apuestas menos o con más ventaja, estas cifras mejoran.</div>` : '<div class="muted hint">Hacen falta al menos 5 apuestas cerradas simples con importe y cuota.</div>'}
@@ -1481,8 +1524,8 @@
         ${kv('RESULTADO NETO', `<span class="${cls(fv.net)}">${seur(fv.net)}</span>`)}`}
       </div>
       ${fv.n ? `<h2>POR PROBABILIDAD</h2>
-      <div class="card"><table class="tbl"><tr><th>PROB. · CUOTA</th><th>N</th><th>REAL</th><th>ESPER.</th></tr>
-        ${fv.bands.map(x => `<tr><td>${pct(x.lo, 0)}–${pct(Math.min(x.hi, 1), 0)}<div class="muted">${odds(1 / Math.min(x.hi, 1))}–${odds(1 / x.lo)}</div></td><td class="num">${x.n}</td><td class="num ${cls(x.hit - x.exp)}">${pct(x.hit, 0)}<div class="muted">${(x.hit ? odds(1 / x.hit) : '—')}</div></td><td class="num">${pct(x.exp, 0)}<div class="muted">${odds(1 / x.exp)}</div></td></tr>`).join('')}</table>
+      <div class="card">${withTable(pairChart(fv.bands), `<table class="tbl"><tr><th>PROB. · CUOTA</th><th>N</th><th>REAL</th><th>ESPER.</th></tr>
+        ${fv.bands.map(x => `<tr><td>${pct(x.lo, 0)}–${pct(Math.min(x.hi, 1), 0)}<div class="muted">${odds(1 / Math.min(x.hi, 1))}–${odds(1 / x.lo)}</div></td><td class="num">${x.n}</td><td class="num ${cls(x.hit - x.exp)}">${pct(x.hit, 0)}<div class="muted">${(x.hit ? odds(1 / x.hit) : '—')}</div></td><td class="num">${pct(x.exp, 0)}<div class="muted">${odds(1 / x.exp)}</div></td></tr>`).join('')}</table>`)}
         <div class="muted hint" style="margin-top:6px">Si «real» queda por debajo de «esper.» de forma sostenida, los favoritos de ese tramo te están fallando más de lo que dice el mercado.</div></div>
       <h2>FALLOS · DEL MÁS AL MENOS PROBABLE</h2>
       <div class="card">${fv.fails.length ? fv.fails.slice(0, 30).map(x => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line2)"><div class="grow"><div class="ellipsis">${esc(selText(x.b))}</div><div class="muted ellipsis">${fdate(x.b.date)} · ${pct(x.p, 0)} (justa ${odds(1 / x.p)}) · tú @${odds(x.b.odds)}</div></div><div class="num neg">${seur(x.pl)}</div></div>`).join('') : '<div class="muted hint">Ningún fallo todavía.</div>'}</div>` : ''}`;
