@@ -298,12 +298,17 @@
     const bank = L.r2(f.net + f.bonus + f.profit - f.pendingRisk);
     const base = f.net + f.bonus;
     const pend = bs.filter(b => !L.isClosed(b)).sort(L.byTime);
+    // Lo que se puede ganar con las pendientes: máximo (aciertan todas) y esperado (con la cuota justa, solo las que la tienen)
+    const pRisk = L.r2(pend.reduce((a, b) => a + L.risk(b), 0)), pMax = L.r2(pend.reduce((a, b) => a + L.potential(b) - L.risk(b), 0));
+    const pFair = pend.filter(b => b.fair > 1 && b.odds > 1 && !b.bonus && (b.legs || []).length <= 1);
+    const pEv = L.r2(pFair.reduce((a, b) => a + L.risk(b) * (b.odds / b.fair - 1), 0));
     view.innerHTML = `${lossBanner(bs)}
       <div class="card hero">
         <div class="lbl">BANK</div>
         <div class="big num">${eur(bank)}</div>
         <div><span class="chg ${cls(f.profit)}">${seur(f.profit)} · ${spct(base ? f.profit / base : null)}</span></div>
         <div class="muted num" style="margin-top:4px">EN JUEGO ${eur(f.pendingRisk)} (NO CUENTA EN EL BANK)</div>
+        ${pend.length ? `<div class="muted num">SI ACIERTAS TODAS <span class="pos">${seur(pMax)}</span>${pFair.length ? ` · ESPERADO <span class="${cls(pEv)}">${seur(pEv)}</span>` : ''}</div>` : ''}
         <div class="kpis">
           <div><div class="k">YIELD</div><div class="v num ${cls(s.yield)}">${spct(s.yield)}</div></div>
           <div><div class="k">ACIERTO</div><div class="v num">${pct(s.winPct, 0)}</div></div>
@@ -316,7 +321,7 @@
       <h2>EVOLUCIÓN DEL BANK</h2>
       <div class="card">${bankChart(L.bankSeries(bs, ms))}</div>
       <h2>RESUMEN</h2>
-      <div class="card">${periodTable(L.periods(bs, today()))}</div>
+      <div class="card">${periodTable(L.periods(bs, today()), pend.length ? { n: pend.length, risk: pRisk, max: pMax, ev: pFair.length ? pEv : null } : null)}</div>
       <button class="block" id="toCash" style="margin-top:6px">CAJA · SALDO POR CASA ›</button>`;
     view.querySelectorAll('[data-close]').forEach(el => el.onclick = () => quickClose(el.dataset.id, el.dataset.close));
     view.querySelectorAll('[data-more]').forEach(el => el.onclick = ev => { ev.stopPropagation(); openBet(S.get(el.dataset.more)); });
@@ -377,8 +382,10 @@
     toast(`${L.RESULTS[r].label} · ${seur(L.profit(nb))}`);
   }
 
-  function periodTable(rows) {
+  function periodTable(rows, pend) {
     return `<table class="tbl"><tr><th></th><th>N</th><th>APOSTADO</th><th>BENEFICIO</th><th>YIELD</th></tr>
+      ${pend ? `<tr><td>PEND.</td><td class="num">${pend.n}</td><td class="num">${eur(pend.risk)}</td><td class="num pos">${seur(pend.max)}</td><td class="num muted">MÁX.</td></tr>
+      ${pend.ev != null ? `<tr><td></td><td></td><td></td><td class="num ${cls(pend.ev)}">${seur(pend.ev)}</td><td class="num muted">ESPER.</td></tr>` : ''}` : ''}
       ${rows.map(r => `<tr><td>${r.key}</td><td class="num">${r.n}</td><td class="num">${eur(r.risk)}</td>
         <td class="num ${cls(r.profit)}">${seur(r.profit)}</td><td class="num ${cls(r.yield)}">${spct(r.yield)}</td></tr>`).join('')}</table>`;
   }
