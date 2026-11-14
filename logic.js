@@ -173,15 +173,39 @@
     return { type: t ? 'W' : 'L', n };
   }
 
-  function clvStats(bets) {
-    const v = bets.filter(b => typeof b.clv === 'number' && isFinite(b.clv));
-    return { n: v.length, avg: v.length ? v.reduce((s, b) => s + b.clv, 0) / v.length : null, pos: v.length ? v.filter(b => b.clv > 0).length / v.length : null };
+  // CLV en dos partes (1 + real = (1 + precio pagado) × (1 + selección)):
+  //  · selección: cuota justa al apostar ÷ cuota justa al cierre − 1 (sin margen: no depende de la casa).
+  //  · precio pagado: tu cuota ÷ cuota justa al apostar − 1 (lo que cobra la casa; con bet365 casi siempre negativo).
+  //  · real: tu cuota ÷ cuota justa al cierre − 1 (el CLV clásico, guardado en b.clv).
+  // Stats usa el modo elegido en Ajustes (por defecto, selección).
+  let clvMode = 'sel';
+  const setClvMode = m => { clvMode = m === 'real' ? 'real' : 'sel'; };
+  const clvSel = b => b.fair > 1 && b.closingFair > 1 && isSingleB(b) ? b.fair / b.closingFair - 1 : null;
+  const clvPaid = b => b.fair > 1 && b.odds > 1 && isSingleB(b) ? b.odds / b.fair - 1 : null;
+  function isSingleB(b) { return (b.legs || []).length <= 1; }
+  const clvOf = (b, mode) => {
+    const m = mode || clvMode;
+    if (m === 'real') return typeof b.clv === 'number' && isFinite(b.clv) ? b.clv : null;
+    return typeof b.clv === 'number' && isFinite(b.clv) ? clvSel(b) : null;
+  };
+  const hasClv = b => clvOf(b) != null;
+
+  function clvStats(bets, mode) {
+    const v = bets.map(b => clvOf(b, mode)).filter(x => x != null);
+    return { n: v.length, avg: v.length ? v.reduce((s, x) => s + x, 0) / v.length : null, pos: v.length ? v.filter(x => x > 0).length / v.length : null };
+  }
+
+  // Desglose medio del CLV: precio pagado, selección y real (solo apuestas con cierre).
+  function clvParts(bets) {
+    const v = bets.filter(b => typeof b.clv === 'number' && isFinite(b.clv) && clvSel(b) != null && clvPaid(b) != null);
+    const avg = f => v.length ? v.reduce((s, b) => s + f(b), 0) / v.length : null;
+    return { n: v.length, paid: avg(clvPaid), sel: avg(clvSel), real: avg(b => b.clv), selPos: v.length ? v.filter(b => clvSel(b) > 0).length / v.length : null };
   }
 
   // CLV agrupado (por liga, mercado…): n, CLV medio, % positivas y resultado económico de esas apuestas.
   function clvBy(bets, keyFn, order) {
     const g = {};
-    bets.filter(b => typeof b.clv === 'number' && isFinite(b.clv)).forEach(b => { const k = keyFn(b) || '—'; (g[k] = g[k] || []).push(b); });
+    bets.filter(hasClv).forEach(b => { const k = keyFn(b) || '—'; (g[k] = g[k] || []).push(b); });
     const row = k => {
       const list = g[k] || [], s = summarize(list), c = clvStats(list);
       return { key: k, n: list.length, avg: c.avg, pos: c.pos, profit: s.profit, yield: s.yield };
@@ -379,8 +403,8 @@
   // CLV medio acumulado apuesta a apuesta (en orden de fecha), para ver si converge por encima de +1 %.
   function clvSeries(bets) {
     let sum = 0, n = 0;
-    return bets.filter(b => typeof b.clv === 'number' && isFinite(b.clv)).sort(byTime)
-      .map(b => { sum += b.clv; n++; return { date: b.date, value: sum / n, n, bet: b }; });
+    return bets.filter(hasClv).sort(byTime)
+      .map(b => { const c = clvOf(b); sum += c; n++; return { date: b.date, value: sum / n, n, bet: b, clv: c }; });
   }
 
   // Beneficio de la semana (lunes–domingo) y del mes en curso, para los límites de pérdida.
@@ -396,6 +420,6 @@
     funds, stakeFor, suggestStake, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
     clvBy, edgeAtBet, clvSeries, hoursBefore, hourBucket, HOUR_KEYS, fairDrift,
     expectedVsReal, luckTest, normCdf, CAL_KEYS, calibration, monthly, daily, drawdown, streakRecords, volatility, crossTab,
-    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks };
+    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks, setClvMode, clvOf, clvSel, clvPaid, clvParts };
   if (typeof module !== 'undefined') module.exports = L; else root.Logic = L;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -4,7 +4,7 @@
 
   const DEFAULT_SETTINGS = {
     id: 'settings', books: ['bet365'], sports: ['⚽'], types: ['1X2', 'Combinada'], tipsters: ['Carlos'], leagues: [],
-    unit: 1, kelly: 0.25, myBooks: [], lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: [], autoSend: { on: false, time: '10:00' }
+    unit: 1, kelly: 0.25, myBooks: [], clvMode: 'sel', lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: [], autoSend: { on: false, time: '10:00' }
   };
 
   // ---------- Acceso a datos ----------
@@ -214,6 +214,7 @@
 
   function render() {
     lastVersion = S.version();
+    L.setClvMode(settings().clvMode);
     if (!S.loggedIn()) { document.body.classList.add('noapp'); return renderLogin(); }
     document.body.classList.remove('noapp');
     renderHeader();
@@ -467,7 +468,7 @@
       const p = L.profit(b);
       html += `<div class="item tap" data-id="${b.id}"><div class="grow"><div class="ellipsis"><b>${esc(selText(b))}</b></div>
         <div class="muted ellipsis">${esc(b.sport)} ${esc(b.type)} · ${esc(b.book)}${b.league ? ' · ' + esc(b.league) : ''}${b.tipster && st.tipsters.length > 1 ? ' · ' + esc(b.tipster) : ''}${b.level ? ' · N' + b.level : ''}</div></div>
-        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${b.autoSettled || b.match ? `<div class="muted">${esc(scoreOf(b))}${b.autoSettled ? ' · AUTO' : ''}</div>` : ''}${typeof b.clv === 'number' ? `<div class="muted">CLV <span class="${cls(b.clv)}">${spct(b.clv)}</span></div>` : b.pickId ? `<div class="muted">${b.clvMissed ? 'SIN CIERRE' : 'CLV PENDIENTE'}</div>` : ''}</div></div>`;
+        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${b.autoSettled || b.match ? `<div class="muted">${esc(scoreOf(b))}${b.autoSettled ? ' · AUTO' : ''}</div>` : ''}${L.clvOf(b) != null ? `<div class="muted">CLV <span class="${cls(L.clvOf(b))}">${spct(L.clvOf(b))}</span></div>` : b.pickId ? `<div class="muted">${b.clvMissed ? 'SIN CIERRE' : 'CLV PENDIENTE'}</div>` : ''}</div></div>`;
     });
     if (open) html += '</div>';
     view.innerHTML = html;
@@ -512,7 +513,7 @@
     };
     const m = sheet(`<h3>${isNew ? '+ NUEVA APUESTA' : 'EDITAR APUESTA'}</h3>
       ${b.pickId ? matchCard(b) : ''}
-      ${b.fair ? `<div class="muted">PICK · CUOTA JUSTA <b class="cyan">${odds(b.fair)}</b>${b.closingFair ? ` · CIERRE <b class="cyan">${odds(b.closingFair)}</b> · CLV <b class="${cls(b.clv)}">${spct(b.clv, 2)}</b>` : b.clvMissed ? ' · SIN CIERRE (APUNTADA CON EL PARTIDO EMPEZADO)' : b.pickId ? (b.commence && new Date(b.commence) <= new Date() ? ' · <span class="yellow">PARTIDO YA EMPEZADO: NO TENDRÁ CLV</span>' : ' · CLV AL EMPEZAR EL PARTIDO') : ''}</div>` : ''}
+      ${b.fair ? `<div class="muted">PICK · CUOTA JUSTA <b class="cyan">${odds(b.fair)}</b>${b.closingFair ? ` · CIERRE <b class="cyan">${odds(b.closingFair)}</b> · CLV SELECCIÓN <b class="${cls(L.clvSel(b))}">${L.clvSel(b) == null ? '—' : spct(L.clvSel(b), 2)}</b> · PRECIO PAGADO <b class="${cls(L.clvPaid(b))}">${L.clvPaid(b) == null ? '—' : spct(L.clvPaid(b), 1)}</b> · CLV REAL <b class="${cls(b.clv)}">${spct(b.clv, 2)}</b>` : b.clvMissed ? ' · SIN CIERRE (APUNTADA CON EL PARTIDO EMPEZADO)' : b.pickId ? (b.commence && new Date(b.commence) <= new Date() ? ' · <span class="yellow">PARTIDO YA EMPEZADO: NO TENDRÁ CLV</span>' : ' · CLV AL EMPEZAR EL PARTIDO') : ''}</div>` : ''}
       <div id="legs"></div>
       <button type="button" class="small" id="addLeg" style="margin-top:2px">+ SELECCIÓN (COMBINADA)</button>
       <label>NIVEL DE STAKE · DISPONIBLE ${eur(avail)} · UNIDAD ${fnum(st.unit, 2).replace(/,00$/, '')} %</label>
@@ -1147,7 +1148,7 @@
     const kv = (k, v) => `<div class="kv"><span class="muted">${k}</span><span class="num">${v}</span></div>`;
     const orow = (k, o) => `<tr><td>${k}</td><td class="num">${o.n}</td><td class="num">${o.n ? odds(o.avg) : '—'}</td><td class="num">${o.n ? odds(o.min) : '—'}</td><td class="num">${o.n ? odds(o.max) : '—'}</td></tr>`;
     const concl = (txt, tone) => `<div class="concl ${tone || ''}">${txt}</div>`;
-    const clvN = clv.n, goal = 300;
+    const clvN = clv.n, goal = 300, cp = L.clvParts(bs), clvLabel = (st0.clvMode || 'sel') === 'real' ? 'CLV real' : 'CLV de selección';
 
     // ---- cálculos ----
     const ev = L.expectedVsReal(bs), lt = L.luckTest(bs), cal = L.calibration(bs), mon = L.monthly(bs), dd = L.drawdown(bs), rec = L.streakRecords(bs), vol = L.volatility(bs);
@@ -1166,7 +1167,9 @@
       : lt.pLuck < 0.05 ? `Es poco probable que tu resultado sea solo suerte (pasaría por azar el ${pct(lt.pLuck, 1)} de las veces). Yield real probable: entre ${spct(lt.yieldLo, 0)} y ${spct(lt.yieldHi, 0)}.`
         : `Tu resultado puede ser suerte: sin ninguna ventaja saldría algo así el ${pct(lt.pLuck, 0)} de las veces. Tu yield real probable está entre ${spct(lt.yieldLo, 0)} y ${spct(lt.yieldHi, 0)}.`;
     const cClv = clv.avg == null ? 'Sin CLV todavía: se rellena con las apuestas hechas desde un pick.'
-      : `CLV medio <b class="${cls(clv.avg)}">${spct(clv.avg, 2)}</b> en ${clvN} apuestas (${pct(clv.pos, 0)} positivas). ${clv.avg > 0.01 ? 'Vas por buen camino.' : clv.avg >= 0 ? 'Justo en el límite: aún no hay ventaja clara.' : 'Estás apostando a peor precio que el mercado al cierre.'}`;
+      : `${clvLabel} medio <b class="${cls(clv.avg)}">${spct(clv.avg, 2)}</b> en ${clvN} apuestas (${pct(clv.pos, 0)} positivas). ${(st0.clvMode || 'sel') === 'real'
+        ? (clv.avg > 0.01 ? 'Vas por buen camino.' : clv.avg >= 0 ? 'Justo en el límite: aún no hay ventaja clara.' : 'Incluye el margen de la casa: con bet365 es normal que salga negativo.')
+        : (clv.avg > 0.005 ? 'El mercado suele moverse a tu favor después de apostar: eliges bien.' : clv.avg >= -0.005 ? 'El mercado apenas se mueve tras tus apuestas: eliges como el mercado.' : 'El mercado suele moverse en tu contra después de apostar: revisa qué y cuándo apuestas.')}`;
     const lastBf = bfm[bfm.length - 1], firstBf = bfm[0];
     const cDisc = !lastBf ? 'Sin apuestas con cuota justa para medir la disciplina.'
       : `Este último mes, el <b class="${lastBf.below > 0.5 ? 'neg' : 'pos'}">${pct(lastBf.below, 0)}</b> de tus apuestas desde pick fueron por debajo de la cuota justa${bfm.length > 1 ? ` (${lastBf.below < firstBf.below ? 'mejor' : lastBf.below > firstBf.below ? 'peor' : 'igual'} que en ${firstBf.key.slice(5)}/${firstBf.key.slice(2, 4)}: ${pct(firstBf.below, 0)})` : ''}.`;
@@ -1226,14 +1229,24 @@
       <h2>CLV · <span class="acc">¿FUNCIONA EL SISTEMA?</span></h2>
       <div class="card">
         ${concl(cClv)}
+        <div class="seg" style="margin:6px 0 4px">${[['sel', 'DE SELECCIÓN'], ['real', 'REAL (CON MARGEN)']].map(([k, tt]) => `<button data-clvm="${k}" class="${(st0.clvMode || 'sel') === k ? 'on' : ''}">${tt}</button>`).join('')}</div>
         ${kv('MUESTRA', `<b class="${clvN >= goal ? 'pos' : 'yellow'}">${clvN} / ${goal}</b>`)}
         ${kv('ESPERANDO CIERRE', bs.filter(b => b.pickId && typeof b.clv !== 'number' && !b.clvMissed && (b.legs || []).length <= 1).length)}
+        <div class="muted hint" style="margin-top:6px">De selección: compara la cuota justa al apostar con la justa al cierre, sin margen de la casa. Real: tu cuota frente a la justa al cierre, con el margen incluido.</div>
         <div style="height:4px;background:var(--line);margin-top:6px;border-radius:4px"><div style="height:4px;border-radius:4px;width:${Math.min(100, clvN / goal * 100)}%;background:var(--cyan)"></div></div>
       </div>
+      ${cp.n ? `<h2>DE DÓNDE SALE TU CLV</h2>
+      <div class="card">
+        ${concl(`Eliges bien si la selección es positiva: el mercado se movió a tu favor después de apostar. El precio pagado es el margen de la casa (con bet365 casi siempre negativo) y solo depende de dónde apuestas.`)}
+        ${kv('SELECCIÓN (SIN MARGEN)', `<span class="${cls(cp.sel)}">${spct(cp.sel, 2)}</span> · ${pct(cp.selPos, 0)} positivas`)}
+        ${kv('PRECIO PAGADO A LA CASA', `<span class="${cls(cp.paid)}">${spct(cp.paid, 2)}</span>`)}
+        ${kv('CLV REAL (LAS DOS JUNTAS)', `<span class="${cls(cp.real)}">${spct(cp.real, 2)}</span>`)}
+        <div class="muted hint" style="margin-top:6px">CLV real ≈ precio pagado + selección. Para mejorar el real sin cambiar cómo eliges: supercuotas, promociones o casas que paguen más.</div>
+      </div>` : ''}
       ${clvN ? `<h2>CLV MEDIO ACUMULADO</h2>
       <div class="card">${lineChart(L.clvSeries(bs), { id: 'clv', label: 'CLV medio acumulado', color: 'var(--cyan)',
         refs: [{ v: 0, label: '0 %' }, { v: 0.01, label: 'OBJ +1 %', col: 'var(--yellow)' }],
-        tip: p => `${fdate(p.date)} · ${p.n} APUESTAS<br>MEDIA <b class="${cls(p.value)}">${spct(p.value, 2)}</b> · ${esc(selText(p.bet))} <span class="${cls(p.bet.clv)}">${spct(p.bet.clv, 1)}</span>` })}
+        tip: p => `${fdate(p.date)} · ${p.n} APUESTAS<br>MEDIA <b class="${cls(p.value)}">${spct(p.value, 2)}</b> · ${esc(selText(p.bet))} <span class="${cls(p.clv)}">${spct(p.clv, 1)}</span>` })}
         <div class="muted hint" style="margin-top:6px">Si la línea se asienta por encima de la amarilla (+1 %) con muchas apuestas, el sistema funciona.</div></div>
       <h2>CLV SEGÚN TU VENTAJA AL APOSTAR</h2>
       <div class="card">${clvTable(L.clvBy(bs, b => { const e = L.edgeAtBet(b); return e == null ? null : e * 100 >= st0.threshold ? EDGE_KEYS[0] : e >= 0 ? EDGE_KEYS[1] : EDGE_KEYS[2]; }, EDGE_KEYS), true)}</div>
@@ -1313,6 +1326,7 @@
       ${{ res: secRes, rend: secRend, clv: secClv, disc: secDisc, det: secDet }[statsTab]}`;
 
     view.querySelectorAll('[data-stab]').forEach(el => el.onclick = () => { statsTab = el.dataset.stab; render(); window.scrollTo(0, 0); });
+    view.querySelectorAll('[data-clvm]').forEach(el => el.onclick = () => saveSettings({ clvMode: el.dataset.clvm }));
     view.querySelectorAll('[data-p]').forEach(el => el.onclick = () => { statsPeriod = el.dataset.p; render(); });
     view.querySelectorAll('[data-by]').forEach(el => el.onclick = () => { statsBy = el.dataset.by; render(); });
     view.querySelectorAll('[data-sfx]').forEach(el => el.onclick = () => { if (el.dataset.sfx === 'dates') { statsF.from = ''; statsF.to = ''; } else statsF[el.dataset.sfx] = ''; render(); });

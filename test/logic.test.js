@@ -1,5 +1,6 @@
 // Comprobación de la migración: los números deben coincidir con la hoja Betting.xlsx.
 const L = require('../logic.js');
+L.setClvMode('real');   // las pruebas antiguas de CLV usan el CLV clásico; el de selección se prueba al final
 const assert = require('assert');
 const mk = (n, d, sel, lvl, stake, odds, result) => ({ id: 'b' + n, date: d, book: 'bet365', sport: '⚽', type: '1X2', tipster: 'Carlos', level: lvl, stake, odds, result, created: n, legs: [{ sel, odds }] });
 const bets = [
@@ -130,4 +131,23 @@ console.log('OK · cerradas', s.n, '(' + s.w + 'G/' + s.l + 'P) · stake', s.ris
   assert.strictEqual(tl.afterWin.n + tl.afterLoss.n, 5);
   assert.deepStrictEqual(L.limitWeeks(xs, 0.5), { weeks: 2, over: 1 });
   console.log('OK · análisis avanzado (esperado, suerte, calibración, caídas, disciplina)');
+}
+
+{
+  // CLV en dos partes: selección (sin margen) y precio pagado
+  const b1 = { id: 'c1', date: '2026-10-01', stake: 1, odds: 1.90, fair: 2.00, closingFair: 1.90, clv: 1.90 / 1.90 - 1, result: 'W', legs: [{ sel: 'A', odds: 1.9 }] };
+  const b2 = { id: 'c2', date: '2026-10-02', stake: 1, odds: 1.80, fair: 1.90, closingFair: 2.00, clv: 1.80 / 2.00 - 1, result: 'L', legs: [{ sel: 'B', odds: 1.8 }] };
+  assert(Math.abs(L.clvSel(b1) - (2.0 / 1.9 - 1)) < 1e-12);          // el mercado se movió a favor: +5,3 %
+  assert(Math.abs(L.clvPaid(b1) - (1.9 / 2.0 - 1)) < 1e-12);         // pagaste un 5 % de margen
+  assert(Math.abs((1 + L.clvPaid(b1)) * (1 + L.clvSel(b1)) - (1 + b1.clv)) < 1e-12);
+  L.setClvMode('sel');
+  assert(L.clvStats([b1, b2]).pos === 0.5);
+  assert(Math.abs(L.clvOf(b2) - (1.9 / 2.0 - 1)) < 1e-12);
+  L.setClvMode('real');
+  assert.strictEqual(L.clvOf(b2), b2.clv);
+  assert(L.clvStats([b1, b2]).avg < 0);
+  const cp = L.clvParts([b1, b2]);
+  assert.strictEqual(cp.n, 2); assert(cp.paid < 0);
+  L.setClvMode('sel');
+  console.log('OK · CLV de selección y precio pagado');
 }
