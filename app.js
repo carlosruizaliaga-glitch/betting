@@ -984,6 +984,7 @@
       <div class="row" style="margin-top:8px;gap:6px">
         <button class="primary grow" id="scanSend" style="padding:13px 6px" ${picksBusy ? 'disabled' : ''}>${picksBusy ? '…' : '🔥 PICKS → TELEGRAM'}</button>
         <button id="scanOnly" style="padding:13px 10px" ${picksBusy ? 'disabled' : ''}>BUSCAR</button></div>
+      <button class="block" id="askClaude" style="margin-top:6px">✦ ANALIZAR CON CLAUDE</button>
       ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
     </div>
     ${picksHelp ? `<div class="card hint" style="margin-top:8px"><b style="color:var(--text)">Cómo leer los picks</b><br>
@@ -1033,6 +1034,11 @@
     view.querySelector('#pkHelp').onclick = () => { picksHelp = !picksHelp; render(); };
     view.querySelector('#scanSend').onclick = () => runScan(true);
     view.querySelector('#scanOnly').onclick = () => runScan(false);
+    view.querySelector('#askClaude').onclick = async () => {
+      const q = 'Usa el conector Betting: llama a estado_banca y a picks_proximos (próximas 48 horas). Analiza los picks con valor y dime, ordenados de mejor a peor, dónde apostar y cuánto (en €, redondeando al nivel de stake de mi unidad), con una frase de motivo cada uno. Reglas: no sugieras apuestas sin ventaja suficiente; si dos picks son del mismo partido o liga, avisa de la concentración; que el total en juego (con lo que ya tengo pendiente) no pase del 10 % de mi banca; avisa de lesiones o contexto que conozcas y que cambien el valor. Si no hay nada que merezca la pena, dímelo claramente. Termina con un resumen corto que pueda copiar.';
+      try { await navigator.clipboard.writeText(q); toast('PETICIÓN COPIADA · PÉGALA EN CLAUDE'); } catch (e) { toast('NO SE PUDO COPIAR'); }
+      setTimeout(() => window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank'), 600);
+    };
     view.querySelectorAll('[data-toggle]').forEach(h => h.onclick = () => {
       const id = h.dataset.toggle; if (openPicks.has(id)) openPicks.delete(id); else openPicks.add(id); render();
     });
