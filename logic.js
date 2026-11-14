@@ -124,7 +124,7 @@
     if (i.move != null && Math.abs(i.move) >= 0.02) add(i.move > 0 ? 5 : -5, i.move > 0 ? 'El mercado se mueve a tu favor' : 'El mercado se mueve en contra');
     if (i.edge > 0.08) add(-15, 'Ventaja muy grande: comprueba que es la misma selección y que la cuota es real');
     score = Math.max(0, Math.min(100, Math.round(score)));
-    return { score, label: score >= 70 ? 'ALTA' : score >= 50 ? 'MEDIA' : 'BAJA', sigma: 0.01 + (100 - score) / 100 * 0.03, why: why.sort((a, b) => Math.abs(b.d) - Math.abs(a.d)) };
+    return { score, label: score >= 70 ? 'ALTA' : score >= 50 ? 'MEDIA' : 'BAJA', sigma: 0.005 + (100 - score) / 100 * 0.025, why: why.sort((a, b) => Math.abs(b.d) - Math.abs(a.d)) };
   }
 
   // Nivel de stake según valor y confianza: Kelly fraccionado con una probabilidad prudente (p − incertidumbre).
@@ -132,7 +132,8 @@
   function stakeByConfidence(odd, p, conf, available, unitPct, frac) {
     const o = +odd;
     if (!(o > 1) || !(p > 0)) return null;
-    const pc = Math.max(0.005, p - conf.sigma), edgeRaw = o * p - 1, edgeC = o * pc - 1;
+    // Se resta solo la mitad de la incertidumbre: restarla entera es asumir el peor caso, y el error de la probabilidad justa es tan probable por arriba como por abajo.
+    const pc = Math.max(0.005, p - conf.sigma / 2), edgeRaw = o * p - 1, edgeC = o * pc - 1;
     if (!(edgeC > 0)) return { edgeRaw, edgeC, pc, pct: 0, level: 0, stake: 0, cap: 0 };
     const pct = (edgeC / (o - 1)) * (frac > 0 ? frac : 0.25) * 100, unit = unitPct > 0 ? unitPct : 1;
     const cap = conf.score >= 70 ? 5 : conf.score >= 50 ? 3 : 2;
