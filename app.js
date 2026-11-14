@@ -317,10 +317,10 @@
           <div><div class="k">RACHA</div><div class="v num ${st.type === 'W' ? 'pos' : st.type === 'L' ? 'neg' : ''}">${st.n ? st.n + (st.type === 'W' ? 'G' : 'P') : '—'}</div></div>
         </div>
       </div>
+      <h2>EVOLUCIÓN DEL BANKROLL</h2>
+      <div class="card">${bankChart(L.bankSeries(bs, ms), pend.length ? [{ v: L.r2(bank + pRisk + pMax), col: 'var(--pos)', label: mny(L.r2(bank + pRisk + pMax)) }].concat(pFair.length ? [{ v: L.r2(bank + pRisk + pEv), col: 'var(--muted)', label: mny(L.r2(bank + pRisk + pEv)) }] : []) : null)}</div>
       <h2>PENDIENTES <span class="acc">${pend.length}</span></h2>
       ${pend.length ? pend.map(pendCard).join('') : '<div class="card empty">SIN APUESTAS PENDIENTES</div>'}
-      <h2>EVOLUCIÓN DEL BANKROLL</h2>
-      <div class="card">${bankChart(L.bankSeries(bs, ms))}</div>
       <h2>RESUMEN</h2>
       <div class="card">${periodTable(L.periods(bs, today()), pend.length ? { n: pend.length, risk: pRisk, max: pMax, ev: pFair.length ? pEv : null, bankMax: L.r2(bank + pRisk + pMax), bankEv: L.r2(bank + pRisk + pEv) } : null)}</div>
       <button class="block" id="toCash" style="margin-top:6px">CAJA · SALDO POR CASA ›</button>`;
@@ -398,9 +398,10 @@
     if (series.length < 2) return '<div class="empty">AÚN NO HAY DATOS SUFICIENTES</div>';
     const W = 600, H = 176, pl = 4, pr = 70, pt = 10, pb = 26;
     const refs = opts.refs || [];
-    const vals = series.map(p => p.value).concat(refs.map(r => r.v));
+    const proj = opts.proj || [], px = proj.length ? 56 : 0;
+    const vals = series.map(p => p.value).concat(refs.map(r => r.v), proj.map(r => r.v));
     const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
-    const x = i => pl + (W - pl - pr) * i / (series.length - 1);
+    const x = i => pl + (W - pl - pr - px) * i / (series.length - 1);
     const y = v => pt + (H - pt - pb) * (1 - (v - lo) / span);
     const pts = series.map((p, i) => ({ x: x(i), y: y(p.value), p }));
     charts[opts.id] = { pts, tip: opts.tip };
@@ -408,13 +409,18 @@
     const last = pts[pts.length - 1], col = opts.color;
     const hline = (v, stroke, label, lcol) => `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="${stroke}" stroke-dasharray="3 4"/>
       <text x="${W - pr + 6}" y="${y(v) + 4}" fill="${lcol || 'var(--muted)'}" font-size="12" font-family="inherit">${label}</text>`;
-    const axisLines = refs.length ? refs.map(r => hline(r.v, r.col || 'var(--line)', r.label, r.col)).join('')
+    // Proyección: líneas punteadas muy sutiles desde el último punto hasta el posible bankroll si se cierran las pendientes
+    const projSvg = proj.map(r => `<line x1="${last.x.toFixed(1)}" y1="${last.y.toFixed(1)}" x2="${W - pr}" y2="${y(r.v).toFixed(1)}" stroke="${r.col}" stroke-width="1.3" stroke-dasharray="2 5" stroke-linecap="round" opacity=".55"/>
+      <circle cx="${W - pr}" cy="${y(r.v).toFixed(1)}" r="2.5" fill="${r.col}" opacity=".6"/>
+      <text x="${W - pr + 7}" y="${y(r.v) + 4}" fill="${r.col}" opacity=".75" font-size="11" font-family="inherit">${r.label}</text>`).join('');
+    const axisLines = proj.length ? hline(lo, 'var(--line)', '') : refs.length ? refs.map(r => hline(r.v, r.col || 'var(--line)', r.label, r.col)).join('')
       : hline(hi, 'var(--line)', opts.axis(hi)) + hline(lo, 'var(--line)', opts.axis(lo));
     return `<div class="chart" data-chart="${opts.id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label)}">
       <defs><linearGradient id="gA-${opts.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#43e8c0" stop-opacity=".22"/><stop offset="1" stop-color="#43e8c0" stop-opacity="0"/></linearGradient></defs>
       ${axisLines}
       ${opts.area ? `<path d="${d} L${last.x.toFixed(1)} ${H - pb} L${pl} ${H - pb} Z" fill="url(#gA-${opts.id})"/>` : ''}
       <path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>
+      ${projSvg}
       <circle cx="${last.x}" cy="${last.y}" r="4" fill="${col}"/>
       <text x="${pl}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit">${fdate(series[0].date)}</text>
       <text x="${W - pr}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit" text-anchor="end">${fdate(last.p.date)}</text>
@@ -423,9 +429,9 @@
       <rect x="0" y="0" width="${W}" height="${H}" fill="transparent"/>
     </svg><div class="tip"></div></div>`;
   }
-  function bankChart(series) {
+  function bankChart(series, proj) {
     const col = series.length && series[series.length - 1].value >= series[0].value ? 'var(--pos)' : 'var(--neg)';
-    return lineChart(series, { id: 'bank', label: 'Evolución del bank', axis: v => mny(v), color: col, area: true,
+    return lineChart(series, { id: 'bank', label: 'Evolución del bankroll', axis: v => mny(v), color: col, area: true, proj,
       tip: p => `${fdate(p.date)} · <b>${eur(p.value)}</b>${p.bet ? `<br>${esc(selText(p.bet))} <span class="${cls(p.delta)}">${seur(p.delta)}</span>` : `<br>CAJA ${seur(p.delta)}`}` });
   }
   function wireChart() {
