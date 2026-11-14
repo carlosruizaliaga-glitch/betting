@@ -1402,18 +1402,18 @@
       <div class="card">
         <div class="seg" style="margin:0 0 8px">${[[0.5, '≥ 50 %'], [0.6, '≥ 60 %'], [0.7, '≥ 70 %']].map(([k, tt]) => `<button data-fav="${k}" class="${favThr === k ? 'on' : ''}">${tt}</button>`).join('')}</div>
         ${!fv.n ? '<div class="muted hint">Aún no hay apuestas simples cerradas con cuota justa y probabilidad de al menos ese nivel (solo cuentan las hechas desde un pick).</div>' : `
-        ${concl(`Apostaste a favoritos (probabilidad ${pct(favThr, 0)} o más) <b>${fv.n}</b> veces: se esperaba acertar el <b>${pct(fv.exp, 0)}</b> y acertaste el <b class="${cls(fv.hit - fv.exp)}">${pct(fv.hit, 0)}</b>. Fallaron <b class="neg">${fv.n - fv.wins}</b>, que te costaron <b class="neg">${eur(fv.lost)}</b>.`)}
+        ${concl(`Apostaste a favoritos (probabilidad ${pct(favThr, 0)} o más) <b>${fv.n}</b> veces: se esperaba acertar el <b>${pct(fv.exp, 0)}</b> (cuota justa ${odds(1 / fv.exp)}) y acertaste el <b class="${cls(fv.hit - fv.exp)}">${pct(fv.hit, 0)}</b> (${(fv.hit ? odds(1 / fv.hit) : '—')}). Fallaron <b class="neg">${fv.n - fv.wins}</b>, que te costaron <b class="neg">${eur(fv.lost)}</b>.`)}
         ${concl(fv.z == null ? '' : fv.z < -1.5 ? 'Fallan bastante más de lo esperado: puede que el mercado sobrevalore a esos favoritos o que haya mala suerte; con pocas apuestas aún no se puede saber.' : fv.z > 1.5 ? 'Aciertas más de lo esperado con favoritos: la muestra apunta a buena elección.' : 'El número de fallos es el esperable por azar: perder con el favorito entra en lo normal.')}
-        ${kv('APUESTAS A FAVORITO', fv.n)}${kv('ACIERTO REAL / ESPERADO', `${pct(fv.hit, 0)} / ${pct(fv.exp, 0)}`)}
+        ${kv('APUESTAS A FAVORITO', fv.n)}${kv('ACIERTO REAL / ESPERADO', `${pct(fv.hit, 0)} (${(fv.hit ? odds(1 / fv.hit) : '—')}) / ${pct(fv.exp, 0)} (${odds(1 / fv.exp)})`)}
         ${kv('GANADO EN LOS ACIERTOS', `<span class="pos">${seur(fv.won)}</span>`)}${kv('PERDIDO EN LOS FALLOS', `<span class="neg">${seur(-fv.lost)}</span>`)}
         ${kv('RESULTADO NETO', `<span class="${cls(fv.net)}">${seur(fv.net)}</span>`)}`}
       </div>
       ${fv.n ? `<h2>POR PROBABILIDAD</h2>
-      <div class="card"><table class="tbl"><tr><th>PROB.</th><th>N</th><th>REAL</th><th>ESPER.</th></tr>
-        ${fv.bands.map(x => `<tr><td>${pct(x.lo, 0)}–${pct(Math.min(x.hi, 1), 0)}</td><td class="num">${x.n}</td><td class="num ${cls(x.hit - x.exp)}">${pct(x.hit, 0)}</td><td class="num">${pct(x.exp, 0)}</td></tr>`).join('')}</table>
+      <div class="card"><table class="tbl"><tr><th>PROB. · CUOTA</th><th>N</th><th>REAL</th><th>ESPER.</th></tr>
+        ${fv.bands.map(x => `<tr><td>${pct(x.lo, 0)}–${pct(Math.min(x.hi, 1), 0)}<div class="muted">${odds(1 / Math.min(x.hi, 1))}–${odds(1 / x.lo)}</div></td><td class="num">${x.n}</td><td class="num ${cls(x.hit - x.exp)}">${pct(x.hit, 0)}<div class="muted">${(x.hit ? odds(1 / x.hit) : '—')}</div></td><td class="num">${pct(x.exp, 0)}<div class="muted">${odds(1 / x.exp)}</div></td></tr>`).join('')}</table>
         <div class="muted hint" style="margin-top:6px">Si «real» queda por debajo de «esper.» de forma sostenida, los favoritos de ese tramo te están fallando más de lo que dice el mercado.</div></div>
       <h2>FALLOS · DEL MÁS AL MENOS PROBABLE</h2>
-      <div class="card">${fv.fails.length ? fv.fails.slice(0, 30).map(x => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line2)"><div class="grow"><div class="ellipsis">${esc(selText(x.b))}</div><div class="muted ellipsis">${fdate(x.b.date)} · ${pct(x.p, 0)} · @${odds(x.b.odds)}</div></div><div class="num neg">${seur(x.pl)}</div></div>`).join('') : '<div class="muted hint">Ningún fallo todavía.</div>'}</div>` : ''}`;
+      <div class="card">${fv.fails.length ? fv.fails.slice(0, 30).map(x => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line2)"><div class="grow"><div class="ellipsis">${esc(selText(x.b))}</div><div class="muted ellipsis">${fdate(x.b.date)} · ${pct(x.p, 0)} (justa ${odds(1 / x.p)}) · tú @${odds(x.b.odds)}</div></div><div class="num neg">${seur(x.pl)}</div></div>`).join('') : '<div class="muted hint">Ningún fallo todavía.</div>'}</div>` : ''}`;
 
     const secClv = `
       <h2>CLV · <span class="acc">¿FUNCIONA EL SISTEMA?</span></h2>
