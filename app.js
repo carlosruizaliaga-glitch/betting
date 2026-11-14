@@ -444,9 +444,11 @@
         if (cur && cur !== t) cur.classList.remove('sel');
         cur = t; t.classList.add('sel');
         tip.innerHTML = t.dataset.tip; tip.style.display = 'block';
-        const b = box.getBoundingClientRect(), r = t.getBoundingClientRect();
-        tip.style.left = Math.max(0, Math.min(b.width - tip.offsetWidth, r.left + r.width / 2 - b.left - tip.offsetWidth / 2)) + 'px';
-        tip.style.top = -(tip.offsetHeight + 12) + 'px';
+        const b = box.getBoundingClientRect(), r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+        tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+        let top = b.top - h - 12;
+        if (top < 70) top = b.bottom + 12;
+        tip.style.top = top + 'px';
       };
       const hide = () => { if (cur) cur.classList.remove('sel'); cur = null; tip.style.display = 'none'; };
       box.addEventListener('pointermove', show); box.addEventListener('pointerdown', show);
