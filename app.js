@@ -122,7 +122,7 @@
   // ---------- Navegación y cabecera ----------
   let tab = 'home';
   const filters = { book: '', sport: '', type: '', tipster: '', league: '', result: '' };
-  let statsPeriod = 'TOTAL', statsBy = 'sport', statsTab = 'res';
+  let statsPeriod = 'TOTAL', statsBy = 'sport', statsTab = 'res', favThr = 0.5;
   const view = document.getElementById('view');
   // ---------- Atrás (gesto o botón del móvil) ----------
   // Cada pantalla, hoja y diálogo es una entrada del historial: al ir atrás el móvil anima directamente
@@ -1396,6 +1396,25 @@
         <div class="muted hint" style="margin-top:6px">Mucho dinero en una sola liga o un solo día hace que un mal día pese más.</div>
       </div>`;
 
+    const fv = L.favStats(bs, favThr);
+    const secFav = `
+      <h2>FAVORITOS · CUANDO EL MÁS PROBABLE NO SE DA</h2>
+      <div class="card">
+        <div class="seg" style="margin:0 0 8px">${[[0.5, '≥ 50 %'], [0.6, '≥ 60 %'], [0.7, '≥ 70 %']].map(([k, tt]) => `<button data-fav="${k}" class="${favThr === k ? 'on' : ''}">${tt}</button>`).join('')}</div>
+        ${!fv.n ? '<div class="muted hint">Aún no hay apuestas simples cerradas con cuota justa y probabilidad de al menos ese nivel (solo cuentan las hechas desde un pick).</div>' : `
+        ${concl(`Apostaste a favoritos (probabilidad ${pct(favThr, 0)} o más) <b>${fv.n}</b> veces: se esperaba acertar el <b>${pct(fv.exp, 0)}</b> y acertaste el <b class="${cls(fv.hit - fv.exp)}">${pct(fv.hit, 0)}</b>. Fallaron <b class="neg">${fv.n - fv.wins}</b>, que te costaron <b class="neg">${eur(fv.lost)}</b>.`)}
+        ${concl(fv.z == null ? '' : fv.z < -1.5 ? 'Fallan bastante más de lo esperado: puede que el mercado sobrevalore a esos favoritos o que haya mala suerte; con pocas apuestas aún no se puede saber.' : fv.z > 1.5 ? 'Aciertas más de lo esperado con favoritos: la muestra apunta a buena elección.' : 'El número de fallos es el esperable por azar: perder con el favorito entra en lo normal.')}
+        ${kv('APUESTAS A FAVORITO', fv.n)}${kv('ACIERTO REAL / ESPERADO', `${pct(fv.hit, 0)} / ${pct(fv.exp, 0)}`)}
+        ${kv('GANADO EN LOS ACIERTOS', `<span class="pos">${seur(fv.won)}</span>`)}${kv('PERDIDO EN LOS FALLOS', `<span class="neg">${seur(-fv.lost)}</span>`)}
+        ${kv('RESULTADO NETO', `<span class="${cls(fv.net)}">${seur(fv.net)}</span>`)}`}
+      </div>
+      ${fv.n ? `<h2>POR PROBABILIDAD</h2>
+      <div class="card"><table class="tbl"><tr><th>PROB.</th><th>N</th><th>REAL</th><th>ESPER.</th></tr>
+        ${fv.bands.map(x => `<tr><td>${pct(x.lo, 0)}–${pct(Math.min(x.hi, 1), 0)}</td><td class="num">${x.n}</td><td class="num ${cls(x.hit - x.exp)}">${pct(x.hit, 0)}</td><td class="num">${pct(x.exp, 0)}</td></tr>`).join('')}</table>
+        <div class="muted hint" style="margin-top:6px">Si «real» queda por debajo de «esper.» de forma sostenida, los favoritos de ese tramo te están fallando más de lo que dice el mercado.</div></div>
+      <h2>FALLOS · DEL MÁS AL MENOS PROBABLE</h2>
+      <div class="card">${fv.fails.length ? fv.fails.slice(0, 30).map(x => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line2)"><div class="grow"><div class="ellipsis">${esc(selText(x.b))}</div><div class="muted ellipsis">${fdate(x.b.date)} · ${pct(x.p, 0)} · @${odds(x.b.odds)}</div></div><div class="num neg">${seur(x.pl)}</div></div>`).join('') : '<div class="muted hint">Ningún fallo todavía.</div>'}</div>` : ''}`;
+
     const secClv = `
       <h2>CLV · <span class="acc">¿FUNCIONA EL SISTEMA?</span></h2>
       <div class="card">
@@ -1486,7 +1505,7 @@
     const FLS = { book: 'Casa', sport: 'Deporte', league: 'Liga', type: 'Tipo', origin: 'Origen' };
     const act = Object.keys(FLS).filter(k => statsF[k]).map(k => [k, `${FLS[k]}: ${k === 'origin' ? (statsF.origin === 'pick' ? 'desde pick' : 'manual') : statsF[k]}`]);
     if (statsF.from || statsF.to) act.unshift(['dates', `${statsF.from ? fdate(statsF.from) : '…'} – ${statsF.to ? fdate(statsF.to) : '…'}`]);
-    const tabs = [['res', 'RESUMEN'], ['rend', 'RENDIMIENTO'], ['risk', 'RIESGO'], ['clv', 'CLV'], ['disc', 'DISCIPLINA'], ['det', 'DETALLE']];
+    const tabs = [['res', 'RESUMEN'], ['rend', 'RENDIMIENTO'], ['risk', 'RIESGO'], ['fav', 'FAVORITOS'], ['clv', 'CLV'], ['disc', 'DISCIPLINA'], ['det', 'DETALLE']];
     if (!tabs.some(x => x[0] === statsTab)) statsTab = 'res';
     view.innerHTML = `
       <div class="row" style="gap:8px;margin-top:12px">
@@ -1494,10 +1513,11 @@
         <button class="fbtn" id="statsF" aria-label="Filtros">${icon('filter', 18)}${act.length ? `<span>${act.length}</span>` : ''}</button></div>
       ${act.length ? `<div class="chips scroll-x" style="margin-top:8px">${act.map(([k, txt]) => `<button class="on" data-sfx="${k}">${esc(txt)} <i>×</i></button>`).join('')}</div>` : ''}
       <div class="tabs2 scroll-x">${tabs.map(([k, tt]) => `<button data-stab="${k}" class="${statsTab === k ? 'on' : ''}">${tt}</button>`).join('')}</div>
-      ${{ res: secRes, rend: secRend, risk: secRisk, clv: secClv, disc: secDisc, det: secDet }[statsTab]}`;
+      ${{ res: secRes, rend: secRend, risk: secRisk, fav: secFav, clv: secClv, disc: secDisc, det: secDet }[statsTab]}`;
 
     view.querySelectorAll('[data-stab]').forEach(el => el.onclick = () => { statsTab = el.dataset.stab; render(); window.scrollTo(0, 0); });
     view.querySelectorAll('[data-gorisk]').forEach(el => el.onclick = ev => { ev.preventDefault(); statsTab = 'risk'; render(); window.scrollTo(0, 0); });
+    view.querySelectorAll('[data-fav]').forEach(el => el.onclick = () => { favThr = +el.dataset.fav; render(); });
     view.querySelectorAll('[data-clvm]').forEach(el => el.onclick = () => saveSettings({ clvMode: el.dataset.clvm }));
     view.querySelectorAll('[data-p]').forEach(el => el.onclick = () => { statsPeriod = el.dataset.p; render(); });
     view.querySelectorAll('[data-by]').forEach(el => el.onclick = () => { statsBy = el.dataset.by; render(); });

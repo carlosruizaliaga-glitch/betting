@@ -521,6 +521,27 @@
   // Racha de pérdidas más larga que cabe esperar en n apuestas si pierdes una de cada 1/q.
   const expectedLongestLoss = (q, n) => q > 0 && q < 1 && n > 0 ? Math.max(1, Math.round(Math.log(n * (1 - q)) / Math.log(1 / q))) : null;
 
+  // Apuestas a favoritos: simples cerradas (ganada o perdida) con cuota justa cuya probabilidad (1 / cuota justa) es al menos thr.
+  function favStats(bets, thr) {
+    thr = thr || 0.5;
+    const v = bets.filter(b => !b.bonus && isSingle(b) && (b.result === 'W' || b.result === 'L') && b.fair > 1 && 1 / b.fair >= thr)
+      .map(b => ({ b, p: 1 / b.fair, win: b.result === 'W', pl: profit(b) }));
+    const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
+    const mk = a => ({ n: a.length, wins: a.filter(x => x.win).length, hit: a.length ? a.filter(x => x.win).length / a.length : null, exp: a.length ? sum(a, x => x.p) / a.length : null });
+    const edges = [0.5, 0.6, 0.7, 0.8, 1.01];
+    const bands = [];
+    for (let i = 0; i < edges.length - 1; i++) {
+      if (edges[i + 1] <= thr) continue;
+      const lo = Math.max(edges[i], thr), a = v.filter(x => x.p >= lo && x.p < edges[i + 1]);
+      bands.push(Object.assign({ lo, hi: Math.min(edges[i + 1], 1) }, mk(a)));
+    }
+    const fails = v.filter(x => !x.win).sort((x, y) => y.p - x.p);
+    const se = Math.sqrt(sum(v, x => x.p * (1 - x.p)));
+    const m = mk(v);
+    return Object.assign(m, { z: se > 0 ? (m.wins - sum(v, x => x.p)) / se : null, lost: r2(-sum(fails, x => x.pl)), won: r2(sum(v.filter(x => x.win), x => x.pl)),
+      net: r2(sum(v, x => x.pl)), bands: bands.filter(x => x.n), fails });
+  }
+
   // Horas que faltaban para el partido cuando se apuntó la apuesta (null si no se sabe).
   const hoursBefore = b => {
     const t = b.commence ? new Date(b.commence).getTime() : NaN;
@@ -563,6 +584,6 @@
     funds, stakeFor, suggestStake, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
     clvBy, edgeAtBet, clvSeries, hoursBefore, hourBucket, HOUR_KEYS, fairDrift,
     expectedVsReal, luckTest, normCdf, CAL_KEYS, calibration, monthly, daily, drawdown, streakRecords, volatility, crossTab,
-    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks, pickConfidence, stakeByConfidence, bankBefore, riskStats, riskSim, expectedLongestLoss, setClvMode, clvOf, clvSel, clvPaid, clvParts };
+    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks, pickConfidence, stakeByConfidence, favStats, bankBefore, riskStats, riskSim, expectedLongestLoss, setClvMode, clvOf, clvSel, clvPaid, clvParts };
   if (typeof module !== 'undefined') module.exports = L; else root.Logic = L;
 })(typeof window !== 'undefined' ? window : globalThis);

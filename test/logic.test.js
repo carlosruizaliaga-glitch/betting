@@ -209,3 +209,17 @@ console.log('OK · cerradas', s.n, '(' + s.w + 'G/' + s.l + 'P) · stake', s.ris
   assert.strictEqual(L.expectedLongestLoss(0, 100), null);
   console.log('OK · riesgo (tamaño sobre banca, Kelly, exposición, simulación)');
 }
+
+{
+  // Favoritos que fallan
+  const F = (n, fair, odds, result) => ({ id: 'f' + n, date: '2026-10-0' + n, created: n, stake: 10, odds, result, fair, legs: [{ sel: 'X', odds }] });
+  const fb = [F(1, 1.25, 1.3, 'W'), F(2, 1.25, 1.3, 'L'), F(3, 1.6, 1.7, 'W'), F(4, 3, 3.1, 'L'), F(5, 1.25, 1.3, 'W')];
+  const fs = L.favStats(fb, 0.5);
+  assert.strictEqual(fs.n, 4);                                   // la de cuota justa 3 (33 %) no es favorita
+  assert.strictEqual(fs.wins, 3);
+  assert(Math.abs(fs.exp - (0.8 * 3 + 0.625) / 4) < 1e-9);
+  assert.strictEqual(fs.fails.length, 1); assert.strictEqual(fs.lost, 10);
+  assert.strictEqual(L.favStats(fb, 0.7).n, 3);
+  assert(fs.bands.length >= 2 && fs.bands.reduce((a, x) => a + x.n, 0) === 4);
+  console.log('OK · favoritos que fallan');
+}
