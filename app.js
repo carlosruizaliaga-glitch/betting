@@ -446,7 +446,7 @@
         tip.innerHTML = t.dataset.tip; tip.style.display = 'block';
         const b = box.getBoundingClientRect(), r = t.getBoundingClientRect();
         tip.style.left = Math.max(0, Math.min(b.width - tip.offsetWidth, r.left + r.width / 2 - b.left - tip.offsetWidth / 2)) + 'px';
-        tip.style.top = Math.max(0, r.top - b.top - tip.offsetHeight - 6) + 'px';
+        tip.style.top = -(tip.offsetHeight + 12) + 'px';
       };
       const hide = () => { if (cur) cur.classList.remove('sel'); cur = null; tip.style.display = 'none'; };
       box.addEventListener('pointermove', show); box.addEventListener('pointerdown', show);
