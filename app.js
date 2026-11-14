@@ -295,7 +295,7 @@
   function renderHome() {
     const bs = bets(), ms = moves();
     const f = L.funds(bs, ms).total, s = L.summarize(bs), st = L.streak(bs);
-    const bank = L.r2(f.net + f.bonus + f.profit);
+    const bank = L.r2(f.net + f.bonus + f.profit - f.pendingRisk);
     const base = f.net + f.bonus;
     const pend = bs.filter(b => !L.isClosed(b)).sort(L.byTime);
     view.innerHTML = `${lossBanner(bs)}
@@ -303,7 +303,7 @@
         <div class="lbl">BANK</div>
         <div class="big num">${eur(bank)}</div>
         <div><span class="chg ${cls(f.profit)}">${seur(f.profit)} · ${spct(base ? f.profit / base : null)}</span></div>
-        <div class="muted num" style="margin-top:4px">DISPONIBLE ${eur(f.available)} · EN JUEGO ${eur(f.pendingRisk)}</div>
+        <div class="muted num" style="margin-top:4px">EN JUEGO ${eur(f.pendingRisk)} (NO CUENTA EN EL BANK)</div>
         <div class="kpis">
           <div><div class="k">YIELD</div><div class="v num ${cls(s.yield)}">${spct(s.yield)}</div></div>
           <div><div class="k">ACIERTO</div><div class="v num">${pct(s.winPct, 0)}</div></div>
@@ -319,7 +319,8 @@
       <div class="card">${periodTable(L.periods(bs, today()))}</div>
       <button class="block" id="toCash" style="margin-top:6px">CAJA · SALDO POR CASA ›</button>`;
     view.querySelectorAll('[data-close]').forEach(el => el.onclick = () => quickClose(el.dataset.id, el.dataset.close));
-    view.querySelectorAll('[data-more]').forEach(el => el.onclick = () => openBet(S.get(el.dataset.more)));
+    view.querySelectorAll('[data-more]').forEach(el => el.onclick = ev => { ev.stopPropagation(); openBet(S.get(el.dataset.more)); });
+    view.querySelectorAll('.pend[data-open]').forEach(el => el.onclick = ev => { if (ev.target.closest('button')) return; openBet(S.get(el.dataset.open)); });
     view.querySelector('#toCash').onclick = () => go('cash');
     wireChart();
   }
@@ -357,7 +358,7 @@
   }
 
   function pendCard(b) {
-    return `<div class="pend">
+    return `<div class="pend" data-open="${b.id}" style="cursor:pointer">
       <div class="row"><div class="grow"><b class="ellipsis" style="display:block">${esc(selText(b))}</b>
         <div class="muted ellipsis">${fdate(b.date)} · ${esc(b.book)} · ${esc(b.type)}${b.league ? ' · ' + esc(b.league) : ''}</div></div>
         <div class="num" style="text-align:right"><b>@${odds(b.odds)}</b><div class="muted">${eur(b.stake)} → ${eur(L.potential(b))}</div></div></div>

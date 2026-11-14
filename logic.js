@@ -174,7 +174,7 @@
     return { current: cur, max, min, fromPeak: r2(cur - max), fromTrough: r2(cur - min) };
   }
 
-  // Evolución del bank: depósitos netos + bonos + beneficio acumulado.
+  // Evolución del bank: depósitos netos + bonos + beneficio acumulado, menos lo que está en juego en apuestas pendientes.
   function bankSeries(bets, moves) {
     const ev = [];
     moves.forEach(m => {
@@ -183,6 +183,8 @@
       if (d) ev.push({ date: m.date, created: m.created || 0, delta: d });
     });
     bets.filter(isClosed).forEach(b => ev.push({ date: b.date, created: b.created || 0, delta: profit(b), bet: b }));
+    // El dinero de las apuestas pendientes ya no está en la banca: se resta desde el día que se apostó
+    bets.filter(b => !isClosed(b)).forEach(b => { const r = risk(b); if (r) ev.push({ date: b.date, created: b.created || 0, delta: -r }); });
     ev.sort(byTime);
     let acc = 0;
     return ev.map(e => { acc = r2(acc + e.delta); return { date: e.date, value: acc, delta: e.delta, bet: e.bet }; });
