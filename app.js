@@ -568,15 +568,19 @@
         : `<span class="muted">${combo}PON CUOTA Y STAKE</span>`;
       // Sugerencia de importe (solo apuestas simples hechas desde un pick, que tienen cuota justa).
       const sg = $('#sugg'), sug0 = b.fair && b.legs.length === 1 ? L.suggestStake(o, fairAdj(b.fair), avail, st.unit, st.kelly) : null;
-      const sug = sug0 && sugFromChecker && Math.abs(o - (prefill.odds || 0)) < 1e-9 ? Object.assign({}, sug0, { level: sugFromChecker.level, stake: L.stakeFor(avail, sugFromChecker.level, st.unit) }) : sug0;
+      const sameOdds = sugFromChecker && Math.abs(o - (prefill.odds || 0)) < 1e-9;
+      const sug = sug0 && sameOdds ? Object.assign({}, sug0, { level: sugFromChecker.noValue ? 0 : sugFromChecker.level, stake: L.stakeFor(avail, sugFromChecker.level, st.unit) }) : sug0;
       if (!sug) { sg.style.display = 'none'; return; }
       sg.style.display = '';
-      sg.innerHTML = sug.level
+      const fb = sameOdds && sugFromChecker.noValue ? sugFromChecker : null;     // sin valor: se propone el mínimo por si apuestas igualmente
+      sg.innerHTML = fb
+        ? `<span class="neg">SIN VALOR ${spct(sug.edge, 1)}</span> · SI APUESTAS IGUAL: <b>NIVEL ${fb.level}</b> (${eur(sug.stake)}), EL MÍNIMO <button type="button" class="small" id="useSug">USAR</button>`
+        : sug.level
         ? `<span class="pos">✓ HAY VALOR ${spct(sug.edge, 1)}</span> · SUGERIDO <b>NIVEL ${sug.level}</b> (${eur(sug.stake)})${sugFromChecker && sug.level === sugFromChecker.level && Math.abs(o - (prefill.odds || 0)) < 1e-9 ? ` · CONFIANZA ${sugFromChecker.label}` : ''} <button type="button" class="small" id="useSug">USAR</button>`
         : `<span class="neg">SIN VALOR ${spct(sug.edge, 1)}</span> · POR DEBAJO DE LA CUOTA JUSTA`;
       const use = $('#useSug');
       if (use) use.onclick = () => {
-        b.level = sug.level;
+        b.level = fb ? fb.level : sug.level;
         $('#levels').querySelectorAll('button').forEach(x => x.classList.toggle('on', +x.dataset.l === b.level));
         $('#stake').value = fnum(sug.stake);
         refresh();
@@ -1049,15 +1053,17 @@
         const sg = L.stakeByConfidence(odd, ci.p, conf, L.funds(bets(), moves()).total.available, st.unit, st.kelly);
         const verdict = edge * 100 >= st.threshold ? ['pos', 'VALE LA PENA'] : edge >= 0 ? ['yellow', 'JUSTA'] : ['neg', 'CARA'];
         const tone = conf.label === 'ALTA' ? 'pos' : conf.label === 'MEDIA' ? 'yellow' : 'neg';
-        const lvl = sg && sg.level ? `<b>NIVEL ${sg.level}</b> <span class="muted">(${eur(sg.stake)})</span>`
+        const avail = L.funds(bets(), moves()).total.available, minStake = L.stakeFor(avail, 1, st.unit), hasLv = !!(sg && sg.level);
+        const lvl = hasLv ? `<b>NIVEL ${sg.level}</b> <span class="muted">(${eur(sg.stake)})</span>`
           : edge > 0 ? '<b class="yellow">NO APOSTARÍA</b> <span class="muted">(poca ventaja para la confianza que hay)</span>' : '<b class="neg">NO APOSTAR</b>';
         out.innerHTML = `<b class="${verdict[0]}">${verdict[1]} ${spct(edge, 1)}</b> <span class="muted">· justa ${odds(fair)}</span>
           <div style="margin-top:6px"><span class="tag" style="background:var(--card2);color:var(--${tone});border:1px solid var(--line)">CONFIANZA ${conf.label} · ${conf.score}</span> ${lvl}
           <button class="small" data-ckbet="1">APUNTAR</button></div>
           <div class="muted hint" style="margin-top:6px">${conf.why.slice(0, 4).map(w => `<span class="${w.d > 0 ? 'pos' : 'neg'}">${w.d > 0 ? '+' : '−'}${Math.abs(w.d)}</span> ${esc(w.txt)}`).join('<br>')}</div>
-          ${sg ? `<div class="muted hint" style="margin-top:6px">Probabilidad prudente ${pct(sg.pc, 1)} (mercado ${pct(ci.p, 1)}): con menos confianza se asume menos. Tope de nivel ${sg.cap || '—'} por confianza ${conf.label.toLowerCase()}. Precio frente a la justa ${spct(odd / fair - 1, 1)}${sa.v ? ` · tu selección ${spct(sa.v, 2)}` : ''}.</div>` : ''}
+          ${hasLv ? '' : `<div style="margin-top:6px;font:400 12px/1.5 var(--sans)">Si apuestas igualmente: <b>NIVEL 1</b> <span class="muted">(${eur(minStake)})</span>, el mínimo. No hay ventaja que justifique más.</div>`}
+          ${sg ? `<div class="muted hint" style="margin-top:6px">Probabilidad prudente ${pct(sg.pc, 1)} (mercado ${pct(ci.p, 1)}): con menos confianza se asume menos.${hasLv ? ` Tope de nivel ${sg.cap} por confianza ${conf.label.toLowerCase()}.` : ''} Precio frente a la justa ${spct(odd / fair - 1, 1)}${sa.v ? ` · tu selección ${spct(sa.v, 2)}` : ''}.</div>` : ''}
           ${ci.edge > 0.08 ? '<div class="hint" style="margin-top:6px;color:var(--yellow)">Cuota muy por encima de la justa: si es una supercuota, perfecto; si no, comprueba que es la misma selección y mercado (90 minutos) antes de apostar.</div>' : ''}`;
-        out.querySelector('[data-ckbet]').onclick = () => betFromPick(p, market, o, pt || undefined, odd, sg && sg.level ? { level: sg.level, label: conf.label, score: conf.score } : null);
+        out.querySelector('[data-ckbet]').onclick = () => betFromPick(p, market, o, pt || undefined, odd, hasLv ? { level: sg.level, label: conf.label, score: conf.score } : { level: 1, label: conf.label, score: conf.score, noValue: true });
       };
       sel.onchange = upd; inp.oninput = upd;
       if (ckState[id]) { if (ckState[id].v) sel.value = ckState[id].v; inp.value = ckState[id].odds || ''; }
