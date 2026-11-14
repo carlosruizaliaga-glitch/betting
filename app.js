@@ -502,6 +502,8 @@
     };
     if (prefill && prefill.snap) b.snap = prefill.snap;
     if (prefill && prefill.odds > 1) { b.odds = prefill.odds; b.legs[0].odds = prefill.odds; }
+    const sugFromChecker = prefill && prefill.sugg ? prefill.sugg : null;
+    if (sugFromChecker && isNew) b.conf = { lv: sugFromChecker.level, s: sugFromChecker.score };
     if (prefill && prefill.sport) b.sport = prefill.sport;
     if (prefill && prefill.type) b.type = prefill.type;
     if (prefill && prefill.pickId) { b.pickMarket = prefill.market || 'h2h'; if (prefill.point != null) b.point = prefill.point; }
@@ -565,11 +567,12 @@
         ? `<span>${combo}RIESGO <b>${eur(L.risk(tmp))}</b> · POTENCIAL <b>${eur(L.potential(tmp))}</b>${edge}</span>${L.isClosed(tmp) ? `<b class="${cls(L.profit(tmp))}">${seur(L.profit(tmp))}</b>` : ''}`
         : `<span class="muted">${combo}PON CUOTA Y STAKE</span>`;
       // Sugerencia de importe (solo apuestas simples hechas desde un pick, que tienen cuota justa).
-      const sg = $('#sugg'), sug = b.fair && b.legs.length === 1 ? L.suggestStake(o, fairAdj(b.fair), avail, st.unit, st.kelly) : null;
+      const sg = $('#sugg'), sug0 = b.fair && b.legs.length === 1 ? L.suggestStake(o, fairAdj(b.fair), avail, st.unit, st.kelly) : null;
+      const sug = sug0 && sugFromChecker && Math.abs(o - (prefill.odds || 0)) < 1e-9 ? Object.assign({}, sug0, { level: sugFromChecker.level, stake: L.stakeFor(avail, sugFromChecker.level, st.unit) }) : sug0;
       if (!sug) { sg.style.display = 'none'; return; }
       sg.style.display = '';
       sg.innerHTML = sug.level
-        ? `<span class="pos">✓ HAY VALOR ${spct(sug.edge, 1)}</span> · SUGERIDO <b>NIVEL ${sug.level}</b> (${eur(sug.stake)}) <button type="button" class="small" id="useSug">USAR</button>`
+        ? `<span class="pos">✓ HAY VALOR ${spct(sug.edge, 1)}</span> · SUGERIDO <b>NIVEL ${sug.level}</b> (${eur(sug.stake)})${sugFromChecker && sug.level === sugFromChecker.level && Math.abs(o - (prefill.odds || 0)) < 1e-9 ? ` · CONFIANZA ${sugFromChecker.label}` : ''} <button type="button" class="small" id="useSug">USAR</button>`
         : `<span class="neg">SIN VALOR ${spct(sug.edge, 1)}</span> · POR DEBAJO DE LA CUOTA JUSTA`;
       const use = $('#useSug');
       if (use) use.onclick = () => {
@@ -690,6 +693,34 @@
   // Ventaja esperada de una cuota: lo que pagas frente a la justa más tu acierto histórico al elegir.
   const effEdge = (odd, fair) => (odd / fair) * (1 + selAdj().v) - 1;
   const fairAdj = fair => fair / (1 + selAdj().v);
+  // Probabilidad media de las casas normales (sin su margen) para cada resultado de un mercado con precios por casa.
+  const softOf = mk => {
+    if (!mk || !mk.prices || !mk.fair_prob) return null;
+    const keys = Object.keys(mk.fair_prob), rows = Object.values(mk.prices).filter(r => keys.every(k => r[k] > 1));
+    if (!rows.length) return null;
+    const acc = Object.fromEntries(keys.map(k => [k, 0]));
+    rows.forEach(r => { const s = keys.reduce((a, k) => a + 1 / r[k], 0); keys.forEach(k => { acc[k] += (1 / r[k]) / s; }); });
+    keys.forEach(k => { acc[k] /= rows.length; });
+    return acc;
+  };
+  // Datos de confianza de una selección concreta (mercado, resultado y línea).
+  function confInputs(p, market, o, mk, pt, odd) {
+    const derived = ['dc', 'dnb'].includes(market);
+    const base = derived ? p : mk;
+    const sp = softOf(derived ? p : mk), dsp = derived && sp ? deriveMk(sp) : null;
+    const md = p.model && p.model.p ? (derived ? (deriveMk(p.model.p) || {})[market] : market === 'h2h' ? { fair_prob: p.model.p } : null) : null;
+    const hours = (new Date(p.commence_time).getTime() - Date.now()) / 3600e3;
+    return {
+      p: Math.min(0.995, mk.fair_prob[o] * (1 + selAdj().v)),
+      srcN: (base.fair_src || p.fair_src || ['pinnacle']).length,
+      soft: derived ? (dsp && dsp[market] ? dsp[market].fair_prob[o] : null) : (sp ? sp[o] : null),
+      model: md && md.fair_prob ? md.fair_prob[o] : null,
+      hours: isFinite(hours) ? hours : null,
+      kind: market === 'btts' || (market === 'totals' && p.totals && +p.totals.point !== +pt) ? 'extra' : 'main',
+      move: market === 'h2h' ? moveOf(p, o) : null,
+      edge: odd / mk.fair_odds[o] - 1
+    };
+  }
   // Media de las casas normales para un resultado (con su margen): lo que suele pagar una casa como bet365.
   const softOdds = (mk, o) => { const v = Object.values(mk.prices || {}).map(r => r[o]).filter(x => x > 1); return v.length ? v.reduce((a, x) => a + x, 0) / v.length : null; };
 
@@ -1014,12 +1045,19 @@
         const [market, o, pt] = sel.value.split('|'), mk = mkFor(p, market, pt || undefined), odd = pnum(inp.value);
         if (!mk || !(odd > 1)) { out.innerHTML = '<span class="muted">Escribe la cuota que ves en bet365.</span>'; return; }
         const fair = mk.fair_odds[o], edge = effEdge(odd, fair), st = settings(), sa = selAdj();
-        const sug = L.suggestStake(odd, fairAdj(fair), L.funds(bets(), moves()).total.available, st.unit, st.kelly);
+        const ci = confInputs(p, market, o, mk, pt, odd), conf = L.pickConfidence(ci);
+        const sg = L.stakeByConfidence(odd, ci.p, conf, L.funds(bets(), moves()).total.available, st.unit, st.kelly);
         const verdict = edge * 100 >= st.threshold ? ['pos', 'VALE LA PENA'] : edge >= 0 ? ['yellow', 'JUSTA'] : ['neg', 'CARA'];
-        out.innerHTML = `<b class="${verdict[0]}">${verdict[1]} ${spct(edge, 1)}</b> <span class="muted">· justa ${odds(fair)}${sug && sug.level ? ` · nivel ${sug.level} (${eur(sug.stake)})` : ''}</span>
-          <button class="small" data-ckbet="1">APUNTAR</button>
-          <div class="muted" style="margin-top:4px">Precio frente a la justa ${spct(odd / fair - 1, 1)}${sa.v ? ` · tu selección ${spct(sa.v, 2)}` : ''} = valor esperado ${spct(edge, 1)}</div>`;
-        out.querySelector('[data-ckbet]').onclick = () => betFromPick(p, market, o, pt || undefined, odd);
+        const tone = conf.label === 'ALTA' ? 'pos' : conf.label === 'MEDIA' ? 'yellow' : 'neg';
+        const lvl = sg && sg.level ? `<b>NIVEL ${sg.level}</b> <span class="muted">(${eur(sg.stake)})</span>`
+          : edge > 0 ? '<b class="yellow">NO APOSTARÍA</b> <span class="muted">(poca ventaja para la confianza que hay)</span>' : '<b class="neg">NO APOSTAR</b>';
+        out.innerHTML = `<b class="${verdict[0]}">${verdict[1]} ${spct(edge, 1)}</b> <span class="muted">· justa ${odds(fair)}</span>
+          <div style="margin-top:6px"><span class="tag" style="background:var(--card2);color:var(--${tone});border:1px solid var(--line)">CONFIANZA ${conf.label} · ${conf.score}</span> ${lvl}
+          <button class="small" data-ckbet="1">APUNTAR</button></div>
+          <div class="muted hint" style="margin-top:6px">${conf.why.slice(0, 4).map(w => `<span class="${w.d > 0 ? 'pos' : 'neg'}">${w.d > 0 ? '+' : '−'}${Math.abs(w.d)}</span> ${esc(w.txt)}`).join('<br>')}</div>
+          ${sg ? `<div class="muted hint" style="margin-top:6px">Probabilidad prudente ${pct(sg.pc, 1)} (mercado ${pct(ci.p, 1)}): con menos confianza se asume menos. Tope de nivel ${sg.cap || '—'} por confianza ${conf.label.toLowerCase()}. Precio frente a la justa ${spct(odd / fair - 1, 1)}${sa.v ? ` · tu selección ${spct(sa.v, 2)}` : ''}.</div>` : ''}
+          ${ci.edge > 0.08 ? '<div class="hint" style="margin-top:6px;color:var(--yellow)">Cuota muy por encima de la justa: si es una supercuota, perfecto; si no, comprueba que es la misma selección y mercado (90 minutos) antes de apostar.</div>' : ''}`;
+        out.querySelector('[data-ckbet]').onclick = () => betFromPick(p, market, o, pt || undefined, odd, sg && sg.level ? { level: sg.level, label: conf.label, score: conf.score } : null);
       };
       sel.onchange = upd; inp.oninput = upd;
       if (ckState[id]) { if (ckState[id].v) sel.value = ckState[id].v; inp.value = ckState[id].odds || ''; }
@@ -1028,12 +1066,12 @@
   }
 
   // Abre la hoja de apuesta con los datos del pick (y la cuota, si viene del comprobador).
-  function betFromPick(p, market, o, pt, odd) {
+  function betFromPick(p, market, o, pt, odd, sugg) {
     const mk = mkFor(p, market, pt);
     if (!mk) return;
     const sp = sportOf(p.sport_key);
     openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o, market, pt != null ? +pt : null), league: p.league, fair: L.r2(mk.fair_odds[o]), pickId: p.id, outcome: o,
-      commence: p.commence_time, sport: sportEmoji(p.sport_key), market, point: market === 'totals' ? +pt : null, odds: odd || null,
+      commence: p.commence_time, sport: sportEmoji(p.sport_key), market, point: market === 'totals' ? +pt : null, odds: odd || null, sugg: sugg || null,
       snap: { home: p.home, away: p.away, league: p.league, probs: p.fair_prob, src: p.fair_src || ['pinnacle'], at: p.captured_at },
       type: market === 'totals' ? 'Goles' : market === 'btts' ? 'Ambos marcan' : market === 'dc' ? 'Doble oportunidad' : market === 'dnb' ? 'Empate no vale' : sp === 'soccer' ? '1X2' : 'Ganador' });
   }

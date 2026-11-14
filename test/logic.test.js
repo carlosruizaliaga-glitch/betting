@@ -151,3 +151,21 @@ console.log('OK · cerradas', s.n, '(' + s.w + 'G/' + s.l + 'P) · stake', s.ris
   L.setClvMode('sel');
   console.log('OK · CLV de selección y precio pagado');
 }
+
+{
+  // Confianza y nivel de stake
+  const hi = L.pickConfidence({ p: 0.7, srcN: 2, soft: 0.69, model: 0.72, hours: 3, kind: 'main', move: 0.03, edge: 0.04 });
+  assert(hi.score >= 90 && hi.label === 'ALTA' && hi.sigma < 0.015);
+  const lo = L.pickConfidence({ p: 0.15, srcN: 1, soft: 0.25, model: 0.01, hours: 60, kind: 'extra', move: -0.03, edge: 0.1 });
+  assert(lo.score < 30 && lo.label === 'BAJA' && lo.sigma > 0.03);
+  const mid = L.pickConfidence({ p: 0.7, srcN: 2, soft: 0.69, model: 0.9, hours: 8, kind: 'main', move: 0, edge: 0.097 });   // modelo a favor, ventaja grande
+  assert(mid.label === 'MEDIA' && mid.why.some(w => /ventaja muy grande/i.test(w.txt)));
+  const a = L.stakeByConfidence(1.57, 0.7, mid, 100, 1, 0.25), b = L.stakeByConfidence(1.57, 0.7, hi, 100, 1, 0.25), c = L.stakeByConfidence(1.57, 0.7, lo, 100, 1, 0.25);
+  assert(a.pc < 0.7 && a.level >= 1 && a.level <= 3);
+  assert(b.level >= a.level && a.level >= c.level);                       // más confianza, más nivel
+  assert(c.level <= 2);                                                   // tope por confianza baja
+  const z = L.stakeByConfidence(1.45, 0.7, lo, 100, 1, 0.25);              // ventaja pequeña + poca confianza: no apostar
+  assert.strictEqual(z.level, 0); assert.strictEqual(z.stake, 0);
+  assert.strictEqual(L.stakeByConfidence(null, 0.5, mid, 100, 1, 0.25), null);
+  console.log('OK · confianza y nivel de stake');
+}

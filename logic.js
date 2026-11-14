@@ -92,6 +92,54 @@
     return { edge, pct, stake: stakeFor(available, level, unit), level };
   }
 
+  // ---------- Confianza y nivel de stake ----------
+  // Confianza (0–100) en que la probabilidad justa del mercado es buena para ESTA selección. Parte de 70 y suma o resta por:
+  // fuentes afinadas, acuerdo de casas normales y del modelo, tiempo hasta el partido, tipo de mercado, movimiento y tamaño de la ventaja.
+  // i = { p, srcN, soft, model, hours, kind: 'main'|'extra', move, edge }  (p, soft y model son probabilidades 0–1 o null)
+  function pickConfidence(i) {
+    let score = 70;
+    const why = [];
+    const add = (d, txt) => { if (d) { score += d; why.push({ d, txt }); } };
+    add(i.srcN >= 2 ? 10 : -5, i.srcN >= 2 ? 'Pinnacle y Betfair coinciden en el precio' : 'Solo hay una fuente afinada');
+    if (i.soft != null) {
+      const d = Math.abs(i.p - i.soft);
+      if (d <= 0.02) add(5, 'Las casas normales coinciden con el mercado');
+      else if (d > 0.05) add(-10, `Las casas normales se separan ${Math.round(d * 100)} puntos`);
+    }
+    if (i.model != null) {
+      const d = i.model - i.p, a = Math.abs(d);
+      let pen = a <= 0.05 ? 10 : a <= 0.10 ? 0 : a <= 0.20 ? -10 : -20;
+      if (pen < 0 && d > 0) pen = Math.round(pen / 2);          // si el modelo da MÁS probabilidad que el mercado, penaliza la mitad
+      add(pen, a <= 0.05 ? 'El modelo coincide con el mercado' : a <= 0.10 ? 'El modelo se separa algo del mercado'
+        : `El modelo se separa ${Math.round(a * 100)} puntos del mercado (${d > 0 ? 'a favor' : 'en contra'})`);
+    }
+    if (i.hours != null) {
+      if (i.hours > 48) add(-10, 'Faltan más de 48 h: el precio puede moverse mucho');
+      else if (i.hours > 24) add(-5, 'Falta más de un día');
+      else if (i.hours <= 6) add(5, 'Cerca del inicio: el precio está más afinado');
+    }
+    if (i.p < 0.2) add(-10, 'Selección muy improbable: más variación');
+    else if (i.p >= 0.5) add(5, 'Selección probable: menos variación');
+    if (i.kind === 'extra') add(-8, 'Mercado con menos liquidez (otras líneas o ambos marcan)');
+    if (i.move != null && Math.abs(i.move) >= 0.02) add(i.move > 0 ? 5 : -5, i.move > 0 ? 'El mercado se mueve a tu favor' : 'El mercado se mueve en contra');
+    if (i.edge > 0.08) add(-15, 'Ventaja muy grande: comprueba que es la misma selección y que la cuota es real');
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    return { score, label: score >= 70 ? 'ALTA' : score >= 50 ? 'MEDIA' : 'BAJA', sigma: 0.01 + (100 - score) / 100 * 0.03, why: why.sort((a, b) => Math.abs(b.d) - Math.abs(a.d)) };
+  }
+
+  // Nivel de stake según valor y confianza: Kelly fraccionado con una probabilidad prudente (p − incertidumbre).
+  // Menos confianza = probabilidad más baja = menos stake, y tope de nivel (alta 5, media 3, baja 2). Sin ventaja prudente: no apostar (nivel 0).
+  function stakeByConfidence(odd, p, conf, available, unitPct, frac) {
+    const o = +odd;
+    if (!(o > 1) || !(p > 0)) return null;
+    const pc = Math.max(0.005, p - conf.sigma), edgeRaw = o * p - 1, edgeC = o * pc - 1;
+    if (!(edgeC > 0)) return { edgeRaw, edgeC, pc, pct: 0, level: 0, stake: 0, cap: 0 };
+    const pct = (edgeC / (o - 1)) * (frac > 0 ? frac : 0.25) * 100, unit = unitPct > 0 ? unitPct : 1;
+    const cap = conf.score >= 70 ? 5 : conf.score >= 50 ? 3 : 2;
+    const level = Math.max(1, Math.min(cap, Math.round(pct / unit)));
+    return { edgeRaw, edgeC, pc, pct, level, stake: stakeFor(available, level, unit), cap };
+  }
+
   // ---------- Estadísticas ----------
   function summarize(bets) {
     const closed = bets.filter(isClosed);
@@ -420,6 +468,6 @@
     funds, stakeFor, suggestStake, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
     clvBy, edgeAtBet, clvSeries, hoursBefore, hourBucket, HOUR_KEYS, fairDrift,
     expectedVsReal, luckTest, normCdf, CAL_KEYS, calibration, monthly, daily, drawdown, streakRecords, volatility, crossTab,
-    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks, setClvMode, clvOf, clvSel, clvPaid, clvParts };
+    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks, pickConfidence, stakeByConfidence, setClvMode, clvOf, clvSel, clvPaid, clvParts };
   if (typeof module !== 'undefined') module.exports = L; else root.Logic = L;
 })(typeof window !== 'undefined' ? window : globalThis);
