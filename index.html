@@ -241,6 +241,10 @@
     .concl { font: 400 13px/1.55 var(--sans); color: var(--text); padding: 8px 0; border-bottom: 1px solid var(--line2); }
     .concl:last-child { border-bottom: 0; }
     .concl b { font-weight: 600; }
+    .ivbox { position: relative; touch-action: pan-y; }
+    .ivbox .tip { position: absolute; top: 0; pointer-events: none; background: var(--raise); border: 1px solid var(--line); border-radius: 10px; padding: 5px 9px; font-size: 11px; white-space: nowrap; display: none; z-index: 2; }
+    .cal i.sel { outline: 2px solid var(--text); outline-offset: -1px; }
+    rect.iv.sel { fill: color-mix(in srgb, var(--text) 10%, transparent); }
     .cal { display: flex; gap: 3px; justify-content: space-between; }
     .cal > div { display: flex; flex-direction: column; gap: 3px; flex: 1; }
     .cal i { display: block; aspect-ratio: 1; border-radius: 3px; max-width: 18px; }
@@ -290,9 +294,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=56"></script>
-  <script src="logic.js?v=56"></script>
-  <script src="store.js?v=56"></script>
-  <script src="app.js?v=56"></script>
+  <script src="version.js?v=57"></script>
+  <script src="logic.js?v=57"></script>
+  <script src="store.js?v=57"></script>
+  <script src="app.js?v=57"></script>
 </body>
 </html>

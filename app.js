@@ -434,7 +434,27 @@
     return lineChart(series, { id: 'bank', label: 'Evolución del bankroll', axis: v => mny(v), color: col, area: true, proj,
       tip: p => `${fdate(p.date)} · <b>${eur(p.value)}</b>${p.bet ? `<br>${esc(selText(p.bet))} <span class="${cls(p.delta)}">${seur(p.delta)}</span>` : `<br>CAJA ${seur(p.delta)}`}` });
   }
+  // Información al pasar el dedo por barras y calendario (elementos con data-tip)
+  function wireIv() {
+    view.querySelectorAll('.ivbox').forEach(box => {
+      const tip = box.querySelector('.tip'); let cur = null;
+      const show = ev => {
+        const el = document.elementFromPoint(ev.clientX, ev.clientY), t = el && el.closest && el.closest('[data-tip]');
+        if (!t || !box.contains(t)) return hide();
+        if (cur && cur !== t) cur.classList.remove('sel');
+        cur = t; t.classList.add('sel');
+        tip.innerHTML = t.dataset.tip; tip.style.display = 'block';
+        const b = box.getBoundingClientRect(), r = t.getBoundingClientRect();
+        tip.style.left = Math.max(0, Math.min(b.width - tip.offsetWidth, r.left + r.width / 2 - b.left - tip.offsetWidth / 2)) + 'px';
+        tip.style.top = Math.max(0, r.top - b.top - tip.offsetHeight - 6) + 'px';
+      };
+      const hide = () => { if (cur) cur.classList.remove('sel'); cur = null; tip.style.display = 'none'; };
+      box.addEventListener('pointermove', show); box.addEventListener('pointerdown', show);
+      box.addEventListener('pointerleave', hide); box.addEventListener('pointerup', ev => { if (ev.pointerType !== 'mouse') setTimeout(hide, 1800); });
+    });
+  }
   function wireChart() {
+    wireIv();
     view.querySelectorAll('.chart[data-chart]').forEach(box => {
       const c = charts[box.dataset.chart]; if (!c) return;
       const svg = box.querySelector('svg'), tip = box.querySelector('.tip'), cx = svg.querySelector('.cx'), cd = svg.querySelector('.cd');
@@ -1195,14 +1215,15 @@
     const bars = rows.map((r, i) => {
       const x = 5 + i * ((W - 10) / rows.length) + ((W - 10) / rows.length - bw) / 2, h = Math.abs(r.profit) / max * (H / 2 - pad);
       const y = r.profit >= 0 ? zero - h : zero;
-      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="3" fill="var(--${r.profit >= 0 ? 'pos' : 'neg'})" opacity=".85"><title>${r.key} · ${eur(r.profit)} · yield ${r.yield == null ? '—' : spct(r.yield, 1)}</title></rect>
+      return `<rect class="ivb" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="3" fill="var(--${r.profit >= 0 ? 'pos' : 'neg'})" opacity=".85"/>
+        <rect class="iv" x="${(x - 4).toFixed(1)}" y="0" width="${(bw + 8).toFixed(1)}" height="${H}" fill="transparent" data-tip="${esc(`${r.key.slice(5)}/${r.key.slice(0, 4)} · <b class='${cls(r.profit)}'>${seur(r.profit)}</b><br>${r.n || 0} apuestas · yield ${r.yield == null ? '—' : spct(r.yield, 1)}`)}"/>
         <text x="${(x + bw / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--mono)">${r.key.slice(5)}/${r.key.slice(2, 4)}</text>`;
     }).join('');
-    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><line x1="0" x2="${W}" y1="${zero}" y2="${zero}" stroke="var(--line)"/>${bars}</svg>`;
+    return `<div class="ivbox"><svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><line x1="0" x2="${W}" y1="${zero}" y2="${zero}" stroke="var(--line)"/>${bars}</svg><div class="tip"></div></div>`;
   }
 
   // Calendario de las últimas 16 semanas: verde si ganaste ese día, rojo si perdiste (más intenso = más dinero).
-  function calendar(day, t) {
+  function calendar(day, t, cnt) {
     const end = new Date(t + 'T12:00:00'), start = new Date(end); start.setDate(end.getDate() - ((end.getDay() + 6) % 7) - 7 * 15);
     const vals = Object.values(day).map(Math.abs), max = Math.max(0.01, ...vals);
     let cols = '';
@@ -1213,11 +1234,11 @@
         const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
         const v = day[k], fut = k > t;
         const bg = fut ? 'transparent' : v == null ? 'var(--line2)' : v === 0 ? 'var(--faint)' : `color-mix(in srgb, var(--${v > 0 ? 'pos' : 'neg'}) ${Math.round(30 + 70 * Math.abs(v) / max)}%, transparent)`;
-        cells += `<i style="background:${bg}" title="${fdate(k)}${v != null ? ' · ' + eur(v) : ''}"></i>`;
+        cells += fut ? '<i style="background:transparent"></i>' : `<i class="iv" style="background:${bg}" data-tip="${esc(`${fdate(k)}${v != null ? ` · <b class='${cls(v)}'>${seur(v)}</b><br>${(cnt && cnt[k]) || 0} apuestas cerradas` : '<br>Sin apuestas cerradas'}`)}"></i>`;
       }
       cols += `<div>${cells}</div>`;
     }
-    return `<div class="cal">${cols}</div><div class="muted" style="margin-top:6px;display:flex;justify-content:space-between"><span>HACE 16 SEMANAS</span><span>HOY</span></div>`;
+    return `<div class="ivbox"><div class="cal">${cols}</div><div class="tip"></div></div><div class="muted" style="margin-top:6px;display:flex;justify-content:space-between"><span>HACE 16 SEMANAS</span><span>HOY</span></div>`;
   }
 
   // Tabla genérica de rendimiento agrupado.
@@ -1317,7 +1338,7 @@
       <h2>BENEFICIO POR MES</h2>
       <div class="card">${monthBars(mon)}</div>
       <h2>CALENDARIO</h2>
-      <div class="card">${calendar(L.daily(bs), t)}</div>
+      <div class="card">${calendar(L.daily(bs), t, bs.filter(L.isClosed).reduce((o, b) => { o[b.date] = (o[b.date] || 0) + 1; return o; }, {}))}</div>
       <h2>PEOR CAÍDA</h2>
       <div class="card">
         ${dd.max < 0 ? concl(`Tu peor bache fue de <b class="neg">${seur(dd.max)}</b>, del ${fdate(dd.peakDate || bs[0].date)} al ${fdate(dd.troughDate)} (${dd.bets} apuestas). ${dd.recoveredDate ? `Lo recuperaste el ${fdate(dd.recoveredDate)}.` : 'Todavía no lo has recuperado.'}`) : concl('Sin caídas: nunca has estado por debajo de tu mejor marca.')}
