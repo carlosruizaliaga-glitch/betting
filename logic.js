@@ -88,7 +88,7 @@
     if (!(edge > 0)) return { edge, pct: 0, stake: 0, level: 0 };
     const pct = Math.max(0, ((o / f - 1) / (o - 1)) * (frac > 0 ? frac : 0.25) * 100);
     const unit = unitPct > 0 ? unitPct : 1;
-    const level = Math.max(1, Math.min(capLevel || 5, Math.round(pct / unit)));
+    const level = Math.max(1, Math.min(capLevel || 6, Math.round(pct / unit)));
     return { edge, pct, stake: stakeFor(available, level, unit), level };
   }
 
@@ -128,7 +128,7 @@
   }
 
   // Nivel de stake según valor y confianza: Kelly fraccionado con una probabilidad prudente (p − incertidumbre).
-  // Menos confianza = probabilidad más baja = menos stake, y tope de nivel (alta 5, media 3, baja 2). Sin ventaja prudente: no apostar (nivel 0).
+  // Menos confianza = probabilidad más baja = menos stake, y tope de nivel (alta 6, media 4, baja 3). Sin ventaja prudente: no apostar (nivel 0).
   function stakeByConfidence(odd, p, conf, available, unitPct, frac) {
     const o = +odd;
     if (!(o > 1) || !(p > 0)) return null;
@@ -136,7 +136,7 @@
     const pc = Math.max(0.005, p - conf.sigma / 2), edgeRaw = o * p - 1, edgeC = o * pc - 1;
     if (!(edgeC > 0)) return { edgeRaw, edgeC, pc, pct: 0, level: 0, stake: 0, cap: 0 };
     const pct = (edgeC / (o - 1)) * (frac > 0 ? frac : 0.25) * 100, unit = unitPct > 0 ? unitPct : 1;
-    const cap = conf.score >= 70 ? 5 : conf.score >= 50 ? 3 : 2;
+    const cap = conf.score >= 70 ? 6 : conf.score >= 50 ? 4 : 3;
     const level = Math.max(1, Math.min(cap, Math.round(pct / unit)));
     return { edgeRaw, edgeC, pc, pct, level, stake: stakeFor(available, level, unit), cap };
   }

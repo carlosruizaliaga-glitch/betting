@@ -567,7 +567,7 @@
         ? `<span>${combo}RIESGO <b>${eur(L.risk(tmp))}</b> · POTENCIAL <b>${eur(L.potential(tmp))}</b>${edge}</span>${L.isClosed(tmp) ? `<b class="${cls(L.profit(tmp))}">${seur(L.profit(tmp))}</b>` : ''}`
         : `<span class="muted">${combo}PON CUOTA Y STAKE</span>`;
       // Sugerencia de importe (solo apuestas simples hechas desde un pick, que tienen cuota justa).
-      const sg = $('#sugg'), sug0 = b.fair && b.legs.length === 1 ? L.suggestStake(o, fairAdj(b.fair), avail, st.unit, st.kelly) : null;
+      const sg = $('#sugg'), sug0 = b.fair && b.legs.length === 1 ? L.suggestStake(o, fairAdj(b.fair), avail, st.unit, kellyEff(st.kelly)) : null;
       const sameOdds = sugFromChecker && Math.abs(o - (prefill.odds || 0)) < 1e-9;
       const sug = sug0 && sameOdds ? Object.assign({}, sug0, { level: sugFromChecker.noValue ? 0 : sugFromChecker.level, stake: L.stakeFor(avail, sugFromChecker.level, st.unit) }) : sug0;
       if (!sug) { sg.style.display = 'none'; return; }
@@ -697,6 +697,8 @@
   // Ventaja esperada de una cuota: lo que pagas frente a la justa más tu acierto histórico al elegir.
   const effEdge = (odd, fair) => (odd / fair) * (1 + selAdj().v) - 1;
   const fairAdj = fair => fair / (1 + selAdj().v);
+  // Fracción de Kelly efectiva de cada opción de Ajustes (subida: antes ⅛, ¼ y ½ se quedaban cortas).
+  const kellyEff = k => ({ 0.125: 0.2, 0.25: 0.35, 0.5: 0.6 }[k] || (+k > 0 ? +k * 1.4 : 0.35));
   // Probabilidad media de las casas normales (sin su margen) para cada resultado de un mercado con precios por casa.
   const softOf = mk => {
     if (!mk || !mk.prices || !mk.fair_prob) return null;
@@ -1050,7 +1052,7 @@
         if (!mk || !(odd > 1)) { out.innerHTML = '<span class="muted">Escribe la cuota que ves en bet365.</span>'; return; }
         const fair = mk.fair_odds[o], edge = effEdge(odd, fair), st = settings(), sa = selAdj();
         const ci = confInputs(p, market, o, mk, pt, odd), conf = L.pickConfidence(ci);
-        const sg = L.stakeByConfidence(odd, ci.p, conf, L.funds(bets(), moves()).total.available, st.unit, st.kelly);
+        const sg = L.stakeByConfidence(odd, ci.p, conf, L.funds(bets(), moves()).total.available, st.unit, kellyEff(st.kelly));
         const verdict = edge * 100 >= st.threshold ? ['pos', 'VALE LA PENA'] : edge >= 0 ? ['yellow', 'JUSTA'] : ['neg', 'CARA'];
         const tone = conf.label === 'ALTA' ? 'pos' : conf.label === 'MEDIA' ? 'yellow' : 'neg';
         const avail = L.funds(bets(), moves()).total.available, minStake = L.stakeFor(avail, 1, st.unit), hasLv = !!(sg && sg.level);
@@ -1224,7 +1226,7 @@
 
     // ---- cálculos ----
     const ev = L.expectedVsReal(bs), lt = L.luckTest(bs), cal = L.calibration(bs), mon = L.monthly(bs), dd = L.drawdown(bs), rec = L.streakRecords(bs), vol = L.volatility(bs);
-    const bfm = L.belowFairByMonth(bs), svs = L.stakeVsSuggested(bs, st0.unit, st0.kelly), vo = L.volume(bs), tl = L.tilt(bs), lw = L.limitWeeks(bs, st0.lossWeek);
+    const bfm = L.belowFairByMonth(bs), svs = L.stakeVsSuggested(bs, st0.unit, kellyEff(st0.kelly)), vo = L.volume(bs), tl = L.tilt(bs), lw = L.limitWeeks(bs, st0.lossWeek);
     const ps = prev ? L.summarize(prev) : null, pclv = prev ? L.clvStats(prev) : null;
 
     // ---- frases ----
@@ -1480,7 +1482,7 @@
     const st2 = S.status();
     const sub = tab.startsWith('set-') ? tab.slice(4) : 'hub';
     const TITLES = { stake: 'STAKE Y LÍMITES', picks: 'BÚSQUEDA DE PICKS', value: 'VALOR Y CASAS', auto: 'AUTOMÁTICO', lists: 'LISTAS', conn: 'CONEXIÓN', data: 'COPIA DE SEGURIDAD' };
-    const kl = { 0.125: '⅛', 0.25: '¼', 0.5: '½' }[st.kelly] || '¼';
+    const kl = { 0.125: '⅕', 0.25: '⅓', 0.5: '⅗' }[st.kelly] || '⅓';
     const nOn = (st.scan || []).filter(l => l.on).length;
     const item = (key, ic, title, subtitle) => `<button class="mrow" data-sub="${key}"><span class="mic">${ic}</span><span class="grow"><b>${title}</b><em>${subtitle}</em></span><span class="chev">›</span></button>`;
     const page = (key, html) => `<div data-sp="${key}" ${sub === key ? '' : 'hidden'}>${html}</div>`;
@@ -1519,7 +1521,7 @@
       <div class="card"><label style="margin-top:0">UNIDAD (% DEL DISPONIBLE POR NIVEL)</label>
         <div class="row"><input id="unit" inputmode="decimal" value="${fnum(st.unit, 2)}" style="max-width:120px"><span class="muted">NIVEL 5 = 5 × ${fnum(st.unit, 2)} % = ${fnum(5 * st.unit, 2)} % DEL DISPONIBLE</span></div>
         <label>IMPORTE SUGERIDO · FRACCIÓN DE KELLY</label>
-        <div class="seg">${[[0.125, '⅛ PRUDENTE'], [0.25, '¼ NORMAL'], [0.5, '½ ATREVIDO']].map(([v, t]) => `<button data-kelly="${v}" class="${st.kelly === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+        <div class="seg">${[[0.125, '⅕ PRUDENTE'], [0.25, '⅓ NORMAL'], [0.5, '⅗ ATREVIDO']].map(([v, t]) => `<button data-kelly="${v}" class="${st.kelly === v ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="muted hint" style="margin-top:6px">Al apuntar un pick, la app sugiere el nivel según la ventaja. Cuanto menor la fracción, más pequeño el importe.</div></div>
       <h2>LÍMITES DE PÉRDIDA</h2>
       <div class="card"><div class="row"><div class="grow"><label style="margin-top:0">SEMANAL €</label><input id="lw" class="mny-in" inputmode="decimal" value="${st.lossWeek ? fnum(st.lossWeek) : ''}" placeholder="Sin límite"></div>

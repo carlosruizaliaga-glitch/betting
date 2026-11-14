@@ -65,7 +65,7 @@ console.log('OK · cerradas', s.n, '(' + s.w + 'G/' + s.l + 'P) · stake', s.ris
   assert.strictEqual(s1.level, 1);                           // un cuarto de Kelly ≈ 1,3 % de la banca → nivel 1 (mínimo)
   assert.strictEqual(s1.stake, 1);
   const s2 = L.suggestStake(3.4, 2.5, 200, 0.5, 0.25);       // +36 %: ventaja grande, unidad pequeña
-  assert(s2.level > 1 && s2.level <= 5);
+  assert(s2.level > 1 && s2.level <= 6);
   const s3 = L.suggestStake(1.95, 2.0, 100, 1, 0.25);        // por debajo de la justa: no apostar
   assert.strictEqual(s3.level, 0); assert.strictEqual(s3.stake, 0);
   assert.strictEqual(L.suggestStake(null, 2, 100, 1, 0.25), null);
@@ -161,9 +161,9 @@ console.log('OK · cerradas', s.n, '(' + s.w + 'G/' + s.l + 'P) · stake', s.ris
   const mid = L.pickConfidence({ p: 0.7, srcN: 2, soft: 0.69, model: 0.9, hours: 8, kind: 'main', move: 0, edge: 0.097 });   // modelo a favor, ventaja grande
   assert(mid.label === 'MEDIA' && mid.why.some(w => /ventaja muy grande/i.test(w.txt)));
   const a = L.stakeByConfidence(1.57, 0.7, mid, 100, 1, 0.25), b = L.stakeByConfidence(1.57, 0.7, hi, 100, 1, 0.25), c = L.stakeByConfidence(1.57, 0.7, lo, 100, 1, 0.25);
-  assert(a.pc < 0.7 && a.level >= 1 && a.level <= 3);
+  assert(a.pc < 0.7 && a.level >= 1 && a.level <= 4);
   assert(b.level >= a.level && a.level >= c.level);                       // más confianza, más nivel
-  assert(c.level <= 2);                                                   // tope por confianza baja
+  assert(c.level <= 3);                                                   // tope por confianza baja
   const z = L.stakeByConfidence(1.45, 0.7, lo, 100, 1, 0.25);              // ventaja pequeña + poca confianza: no apostar
   assert.strictEqual(z.level, 0); assert.strictEqual(z.stake, 0);
   assert.strictEqual(L.stakeByConfidence(null, 0.5, mid, 100, 1, 0.25), null);
