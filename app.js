@@ -308,8 +308,8 @@
         <div class="big num">${eur(bank)}</div>
         <div><span class="chg ${cls(f.profit)}">${seur(f.profit)} · ${spct(base ? f.profit / base : null)}</span></div>
         <div class="muted num" style="margin-top:4px">EN JUEGO ${eur(f.pendingRisk)} (NO CUENTA EN EL BANKROLL)</div>
-        ${pend.length ? `<div class="muted num">SI ACIERTAS TODAS <span class="pos">${seur(pMax)}</span> → BANKROLL <span class="pos">${eur(L.r2(bank + pRisk + pMax))}</span></div>
-        ${pFair.length ? `<div class="muted num">ESPERADO <span class="${cls(pEv)}">${seur(pEv)}</span> → BANKROLL <span class="${cls(pEv)}">${eur(L.r2(bank + pRisk + pEv))}</span></div>` : ''}` : ''}
+        ${pend.length ? `<div class="muted num" style="font-size:12px">SI ACIERTAS TODAS <span class="pos">${seur(pMax)}</span> → BANKROLL <span class="pos">${eur(L.r2(bank + pRisk + pMax))}</span></div>
+        ${pFair.length ? `<div class="muted num" style="font-size:12px">ESPERADO <span class="${cls(pEv)}">${seur(pEv)}</span> → BANKROLL <span class="${cls(pEv)}">${eur(L.r2(bank + pRisk + pEv))}</span></div>` : ''}` : ''}
         <div class="kpis">
           <div><div class="k">YIELD</div><div class="v num ${cls(s.yield)}">${spct(s.yield)}</div></div>
           <div><div class="k">ACIERTO</div><div class="v num">${pct(s.winPct, 0)}</div></div>
@@ -396,9 +396,9 @@
   // opts: { id, label, axis(v), tip(p), color, area, refs: [{ v, label, col }] }
   function lineChart(series, opts) {
     if (series.length < 2) return '<div class="empty">AÚN NO HAY DATOS SUFICIENTES</div>';
-    const W = 600, H = 176, pl = 4, pr = 70, pt = 10, pb = 26;
     const refs = opts.refs || [];
-    const proj = opts.proj || [], px = proj.length ? 56 : 0;
+    const proj = opts.proj || [], px = proj.length ? 60 : 0;
+    const W = 600, H = 176, pl = 4, pr = proj.length ? 46 : 70, pt = 10, pb = 26;
     const vals = series.map(p => p.value).concat(refs.map(r => r.v), proj.map(r => r.v));
     const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
     const x = i => pl + (W - pl - pr - px) * i / (series.length - 1);
@@ -423,7 +423,7 @@
       ${projSvg}
       <circle cx="${last.x}" cy="${last.y}" r="4" fill="${col}"/>
       <text x="${pl}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit">${fdate(series[0].date)}</text>
-      <text x="${W - pr}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit" text-anchor="end">${fdate(last.p.date)}</text>
+      <text x="${(last.x).toFixed(1)}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit" text-anchor="end">${fdate(last.p.date)}</text>
       <line class="cx" y1="${pt}" y2="${H - pb}" stroke="var(--muted)" visibility="hidden"/>
       <circle class="cd" r="5" fill="var(--bg)" stroke="${col}" stroke-width="2" visibility="hidden"/>
       <rect x="0" y="0" width="${W}" height="${H}" fill="transparent"/>
