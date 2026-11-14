@@ -190,6 +190,170 @@
     return Object.keys(g).map(row).sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
   }
 
+  // ---------- Análisis avanzado (Stats) ----------
+  const isSingle = b => (b.legs || []).length <= 1;
+  const winR = r => r === 'W' || r === 'HW', lossR = r => r === 'L' || r === 'HL';
+
+  // Beneficio esperado frente al real. Esperado = importe × (tu cuota ÷ cuota justa al apostar − 1).
+  // "Suerte" = real − esperado. evClose usa la cuota justa de cierre (lo que dice el CLV).
+  function expectedVsReal(bets) {
+    const list = bets.filter(b => isClosed(b) && !b.bonus && b.result !== 'CO' && isSingle(b) && b.fair > 1 && b.odds > 1);
+    let ev = 0, evClose = 0, nClose = 0, real = 0, rsk = 0;
+    list.forEach(b => {
+      const st = risk(b);
+      ev += st * (b.odds / b.fair - 1); real += profit(b); rsk += st;
+      if (b.closingFair > 1) { evClose += st * (b.odds / b.closingFair - 1); nClose++; }
+    });
+    return { n: list.length, risk: r2(rsk), ev: r2(ev), real: r2(real), luck: r2(real - ev), evClose: r2(evClose), nClose };
+  }
+
+  // Distribución normal (aproximación de Abramowitz-Stegun, error < 1e-7).
+  function erf(x) {
+    const sg = Math.sign(x); x = Math.abs(x);
+    const t = 1 / (1 + 0.3275911 * x);
+    const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+    return sg * y;
+  }
+  const normCdf = z => 0.5 * (1 + erf(z / Math.SQRT2));
+
+  // ¿Es suerte? Si no tuvieras ninguna ventaja (cuota = justa), el beneficio esperado sería 0 con varianza Σ importe²·(cuota − 1).
+  // pLuck = probabilidad de llegar a un resultado tan bueno (o tan malo) solo por azar. Rango del yield al 95 %.
+  function luckTest(bets) {
+    const list = bets.filter(b => (b.result === 'W' || b.result === 'L') && !b.bonus && b.odds > 1 && isSingle(b));
+    let pr = 0, v = 0, rsk = 0;
+    list.forEach(b => { const st = +b.stake || 0; pr += profit(b); v += st * st * (b.odds - 1); rsk += st; });
+    const sd = Math.sqrt(v), z = sd > 0 ? pr / sd : 0;
+    return { n: list.length, enough: list.length >= 20, profit: r2(pr), z, pLuck: 1 - normCdf(Math.abs(z)),
+      yield: rsk > 0 ? pr / rsk : null, yieldLo: rsk > 0 ? (pr - 1.96 * sd) / rsk : null, yieldHi: rsk > 0 ? (pr + 1.96 * sd) / rsk : null };
+  }
+
+  // Calibración: por tramos de probabilidad (justa si la hay; si no, la de tu cuota), cuánto deberías acertar y cuánto aciertas.
+  const CAL_KEYS = ['< 30 %', '30–45 %', '45–60 %', '60–75 %', '> 75 %'];
+  function calibration(bets) {
+    const rows = CAL_KEYS.map(k => ({ key: k, n: 0, exp: 0, won: 0 }));
+    bets.filter(b => (b.result === 'W' || b.result === 'L') && isSingle(b) && b.odds > 1).forEach(b => {
+      const pr = b.fair > 1 ? 1 / b.fair : 1 / b.odds;
+      const i = pr < 0.3 ? 0 : pr < 0.45 ? 1 : pr < 0.6 ? 2 : pr < 0.75 ? 3 : 4;
+      rows[i].n++; rows[i].exp += pr; if (b.result === 'W') rows[i].won++;
+    });
+    return rows.map(r => ({ key: r.key, n: r.n, expPct: r.n ? r.exp / r.n : null, actPct: r.n ? r.won / r.n : null }));
+  }
+
+  // Resumen por mes (cerradas), en orden.
+  function monthly(bets) {
+    const g = {};
+    bets.filter(isClosed).forEach(b => { const k = (b.date || '').slice(0, 7); (g[k] = g[k] || []).push(b); });
+    return Object.keys(g).sort().map(k => Object.assign({ key: k }, summarize(g[k])));
+  }
+
+  // Beneficio de cada día (cerradas): { 'AAAA-MM-DD': beneficio }.
+  function daily(bets) {
+    const d = {};
+    bets.filter(isClosed).forEach(b => { d[b.date] = r2((d[b.date] || 0) + profit(b)); });
+    return d;
+  }
+
+  // Peor caída del beneficio acumulado: cuánto, desde qué fecha (pico) hasta cuál (fondo), cuántas apuestas y si ya se recuperó.
+  function drawdown(bets) {
+    const h = profitHistory(bets);
+    let peak = 0, peakDate = null, peakI = -1, best = { max: 0, peakDate: null, troughDate: null, bets: 0, recoveredDate: null };
+    let cur = null;
+    h.forEach((pt, i) => {
+      if (pt.value >= peak) {
+        if (cur && cur.recoveredDate === null) cur.recoveredDate = pt.date;
+        peak = pt.value; peakDate = pt.date; peakI = i; cur = null;
+      } else {
+        const dd = r2(pt.value - peak);
+        if (dd < best.max) { best = { max: dd, peakDate, troughDate: pt.date, bets: i - peakI, recoveredDate: null }; cur = best; }
+      }
+    });
+    return best;
+  }
+
+  // Rachas récord (ganadas y perdidas seguidas). Nulas y cash out no cortan.
+  function streakRecords(bets) {
+    const c = bets.filter(b => winR(b.result) || lossR(b.result)).sort(byTime);
+    let w = 0, l = 0, cw = 0, cl = 0;
+    c.forEach(b => { if (winR(b.result)) { cw++; cl = 0; } else { cl++; cw = 0; } w = Math.max(w, cw); l = Math.max(l, cl); });
+    return { win: w, loss: l };
+  }
+
+  // Volatilidad: desviación del beneficio por apuesta, en € y en "importes medios".
+  function volatility(bets) {
+    const c = bets.filter(isClosed);
+    if (c.length < 2) return null;
+    const pr = c.map(profit), m = pr.reduce((a, x) => a + x, 0) / pr.length;
+    const sd = Math.sqrt(pr.reduce((a, x) => a + (x - m) * (x - m), 0) / (pr.length - 1));
+    const avgStake = c.reduce((a, b) => a + risk(b), 0) / c.length;
+    return { sd: r2(sd), perStake: avgStake > 0 ? sd / avgStake : null };
+  }
+
+  // Tabla cruzada (p. ej. liga × tipo): las filas y columnas con más apuestas y el resumen de cada cruce.
+  function crossTab(bets, rowFn, colFn, maxRows, maxCols) {
+    const c = bets.filter(isClosed), top = (fn, n) => {
+      const cnt = {}; c.forEach(b => { const k = fn(b) || '—'; cnt[k] = (cnt[k] || 0) + 1; });
+      return Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a] || a.localeCompare(b)).slice(0, n);
+    };
+    const rows = top(rowFn, maxRows || 6), cols = top(colFn, maxCols || 3), cells = {};
+    rows.forEach(r => cols.forEach(k => { cells[r + '|' + k] = summarize(c.filter(b => (rowFn(b) || '—') === r && (colFn(b) || '—') === k)); }));
+    return { rows, cols, cells };
+  }
+
+  // Disciplina: por mes, % de apuestas por debajo de la cuota justa y ventaja media (solo las que tienen cuota justa).
+  function belowFairByMonth(bets) {
+    const g = {};
+    bets.filter(b => b.fair > 1 && b.odds > 1 && isSingle(b)).forEach(b => { const k = (b.date || '').slice(0, 7); (g[k] = g[k] || []).push(b.odds / b.fair - 1); });
+    return Object.keys(g).sort().map(k => ({ key: k, n: g[k].length, below: g[k].filter(e => e < 0).length / g[k].length, avgEdge: g[k].reduce((a, e) => a + e, 0) / g[k].length }));
+  }
+
+  // Nivel real frente al sugerido por Kelly (solo apuestas desde un pick con nivel y cuota justa).
+  function stakeVsSuggested(bets, unitPct, frac) {
+    const list = bets.filter(b => b.level && b.fair > 1 && b.odds > 1 && isSingle(b));
+    let above = 0, same = 0, below = 0, sumReal = 0, sumSug = 0, noValue = 0;
+    list.forEach(b => {
+      const sg = suggestStake(b.odds, b.fair, 100, unitPct, frac);
+      const lv = sg ? sg.level : 0;
+      if (!lv) noValue++;
+      sumReal += b.level; sumSug += lv;
+      if (b.level > lv) above++; else if (b.level === lv) same++; else below++;
+    });
+    const n = list.length;
+    return { n, above, same, below, noValue, avgReal: n ? sumReal / n : null, avgSug: n ? sumSug / n : null };
+  }
+
+  // Volumen: días con apuestas, media por día activo, máximo en un día y media semanal.
+  function volume(bets) {
+    const d = {};
+    bets.forEach(b => { if (b.date) d[b.date] = (d[b.date] || 0) + 1; });
+    const days = Object.keys(d).sort(), n = bets.length;
+    if (!days.length) return { n: 0, days: 0, perDay: null, maxDay: 0, maxDate: null, perWeek: null };
+    const maxDate = days.reduce((a, k) => d[k] > d[a] ? k : a, days[0]);
+    const span = (new Date(days[days.length - 1]) - new Date(days[0])) / 864e5 + 1;
+    return { n, days: days.length, perDay: n / days.length, maxDay: d[maxDate], maxDate, perWeek: n / Math.max(1, span / 7) };
+  }
+
+  // Efecto tras ganar o perder: importe medio y resultado de la apuesta siguiente (por orden de alta).
+  function tilt(bets) {
+    const c = bets.slice().sort(byTime), g = { W: [], L: [] };
+    for (let i = 1; i < c.length; i++) {
+      const prev = c[i - 1].result;
+      if (winR(prev)) g.W.push(c[i]); else if (lossR(prev)) g.L.push(c[i]);
+    }
+    const avgStake = c.length ? c.reduce((a, b) => a + (+b.stake || 0), 0) / c.length : 0;
+    const f = list => { const sm = summarize(list); const st = list.length ? list.reduce((a, b) => a + (+b.stake || 0), 0) / list.length : null;
+      return { n: list.length, avgStake: st, vsAvg: st != null && avgStake > 0 ? st / avgStake - 1 : null, yield: sm.yield }; };
+    return { afterWin: f(g.W), afterLoss: f(g.L), avgStake };
+  }
+
+  // Semanas (lunes–domingo) en las que la pérdida superó el límite semanal.
+  function limitWeeks(bets, lossWeek) {
+    if (!(lossWeek > 0)) return null;
+    const g = {};
+    bets.filter(isClosed).forEach(b => { const k = weekStart(b.date); g[k] = r2((g[k] || 0) + profit(b)); });
+    const weeks = Object.keys(g);
+    return { weeks: weeks.length, over: weeks.filter(k => -g[k] >= lossWeek).length };
+  }
+
   // Horas que faltaban para el partido cuando se apuntó la apuesta (null si no se sabe).
   const hoursBefore = b => {
     const t = b.commence ? new Date(b.commence).getTime() : NaN;
@@ -230,6 +394,8 @@
 
   const L = { r2, RESULTS, isClosed, risk, payout, potential, profit, comboOdds, byTime, madridDate, addDays, weekStart,
     funds, stakeFor, suggestStake, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
-    clvBy, edgeAtBet, clvSeries, hoursBefore, hourBucket, HOUR_KEYS, fairDrift };
+    clvBy, edgeAtBet, clvSeries, hoursBefore, hourBucket, HOUR_KEYS, fairDrift,
+    expectedVsReal, luckTest, normCdf, CAL_KEYS, calibration, monthly, daily, drawdown, streakRecords, volatility, crossTab,
+    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks };
   if (typeof module !== 'undefined') module.exports = L; else root.Logic = L;
 })(typeof window !== 'undefined' ? window : globalThis);

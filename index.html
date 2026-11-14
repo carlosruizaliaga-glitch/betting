@@ -238,6 +238,15 @@
     .srcs td.pos { color: var(--pos); }
     .ckres { font: 400 12px/1.6 var(--sans); }
     .ckres button { margin-left: 6px; padding: 4px 10px; }
+    .concl { font: 400 13px/1.55 var(--sans); color: var(--text); padding: 8px 0; border-bottom: 1px solid var(--line2); }
+    .concl:last-child { border-bottom: 0; }
+    .concl b { font-weight: 600; }
+    .cal { display: flex; gap: 3px; justify-content: space-between; }
+    .cal > div { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+    .cal i { display: block; aspect-ratio: 1; border-radius: 3px; max-width: 18px; }
+    .tabs2 { gap: 18px; overflow-x: auto; scrollbar-width: none; }
+    .tabs2 button { flex: none; }
+    body.hide-amt .concl b.pos, body.hide-amt .concl b.neg { letter-spacing: .1em; }
     .sugg { margin-top: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card2); font: 500 11px/1.6 var(--mono); letter-spacing: .02em; }
     .sugg button { margin-left: 6px; padding: 3px 10px; }
     .pksec { font: 600 10px/1 var(--mono); letter-spacing: .1em; color: var(--muted); margin: 14px 2px 0; }
@@ -273,9 +282,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=30"></script>
-  <script src="logic.js?v=30"></script>
-  <script src="store.js?v=30"></script>
-  <script src="app.js?v=30"></script>
+  <script src="version.js?v=32"></script>
+  <script src="logic.js?v=32"></script>
+  <script src="store.js?v=32"></script>
+  <script src="app.js?v=32"></script>
 </body>
 </html>

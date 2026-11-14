@@ -88,3 +88,46 @@ console.log('OK · cerradas', s.n, '(' + s.w + 'G/' + s.l + 'P) · stake', s.ris
   assert(Math.abs(b2.bias - 0.125) < 1e-9);
   console.log('OK · hora de la apuesta y fiabilidad de la cuota justa');
 }
+
+{
+  // Análisis avanzado
+  const B = (n, date, stake, odds, result, extra) => Object.assign({ id: 'a' + n, date, created: n, stake, odds, result, legs: [{ sel: 'X', odds }], book: 'bet365', sport: '⚽', type: '1X2' }, extra);
+  const xs = [
+    B(1, '2026-10-01', 1, 2.2, 'W', { fair: 2.0, closingFair: 2.1, level: 5 }),   // esperado +0,10
+    B(2, '2026-10-02', 1, 1.9, 'L', { fair: 2.0, level: 2 }),                     // esperado −0,05
+    B(3, '2026-10-02', 2, 1.5, 'W', { fair: 1.5, level: 1 }),                     // esperado 0
+    B(4, '2026-11-03', 1, 3.0, 'L'),
+    B(5, '2026-11-04', 1, 2.0, 'L'),
+    B(6, '2026-11-05', 1, 2.0, 'W')];
+  const e = L.expectedVsReal(xs);
+  assert.strictEqual(e.n, 3);
+  assert.strictEqual(e.ev, 0.05);
+  assert.strictEqual(e.real, L.r2(1.2 - 1 + 1));
+  assert.strictEqual(e.luck, L.r2(e.real - e.ev));
+  assert.strictEqual(e.nClose, 1);
+  assert(Math.abs(L.normCdf(0) - 0.5) < 1e-7 && Math.abs(L.normCdf(1.96) - 0.975) < 1e-3);
+  const lt = L.luckTest(xs);
+  assert.strictEqual(lt.n, 6);
+  assert(lt.pLuck > 0 && lt.pLuck <= 0.5 && lt.yieldLo < lt.yield && lt.yield < lt.yieldHi);
+  const cal = L.calibration(xs);
+  assert.strictEqual(cal.reduce((a, r) => a + r.n, 0), 6);
+  assert.strictEqual(cal.find(r => r.key === '60–75 %').n, 1);               // la de 1,50 justa = 66,7 %
+  assert.deepStrictEqual(L.monthly(xs).map(r => r.key), ['2026-10', '2026-11']);
+  assert.strictEqual(L.daily(xs)['2026-10-02'], L.r2(-1 + 1));
+  const dd = L.drawdown(xs);
+  assert(dd.max < 0 && dd.peakDate && dd.troughDate);
+  assert.deepStrictEqual(L.streakRecords(xs), { win: 1, loss: 2 });
+  assert(L.volatility(xs).sd > 0);
+  const ct = L.crossTab(xs, b => b.book, b => b.type);
+  assert.strictEqual(ct.cells['bet365|1X2'].n, 6);
+  const bf = L.belowFairByMonth(xs);
+  assert.strictEqual(bf[0].n, 3); assert(Math.abs(bf[0].below - 1 / 3) < 1e-9);
+  const sv = L.stakeVsSuggested(xs, 1, 0.25);
+  assert.strictEqual(sv.n, 3); assert.strictEqual(sv.noValue, 2);            // la 2 (bajo justa) y la 3 (justa) no tienen valor
+  const vo = L.volume(xs);
+  assert.strictEqual(vo.days, 5); assert.strictEqual(vo.maxDay, 2);
+  const tl = L.tilt(xs);
+  assert.strictEqual(tl.afterWin.n + tl.afterLoss.n, 5);
+  assert.deepStrictEqual(L.limitWeeks(xs, 0.5), { weeks: 2, over: 1 });
+  console.log('OK · análisis avanzado (esperado, suerte, calibración, caídas, disciplina)');
+}

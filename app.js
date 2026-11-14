@@ -1059,48 +1059,176 @@
         <td class="num ${r.error > 0.03 ? 'yellow' : ''}">${fnum(r.error * 100, 1)} pt</td><td class="num">${r.bias > 0 ? '+' : ''}${fnum(r.bias * 100, 1)} pt</td></tr>`).join('')}</table>`;
   }
 
+  // Filtros propios de Stats (se suman al periodo 7D / MES / AÑO / TOTAL).
+  const statsF = { from: '', to: '', book: '', sport: '', league: '', type: '', origin: '' };
+  let crossRow = 'league', crossCol = 'type';
+  const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+  const BY_LABEL = { sport: 'DEPORTE', type: 'TIPO', league: 'LIGA', book: 'CASA', tipster: 'TIPSTER', odds: 'CUOTA', level: 'NIVEL', weekday: 'DÍA', hour: 'HORA DE APOSTAR',
+    origin: 'ORIGEN', fav: 'FAVORITO', combo: 'SIMPLE/COMBI', live: 'DIRECTO', bonus: 'GRATIS', value: 'VALOR' };
+  const BY_ORDER = { odds: L.ODDS_RANGES.map(r => r.key), level: ['N1–2', 'N3–4', 'N5–6', 'N7+', 'SIN NIVEL'], weekday: ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'],
+    hour: ['MAÑANA', 'MEDIODÍA', 'TARDE', 'NOCHE'], value: ['CON VALOR', 'POCO VALOR', 'SIN VALOR'] };
+  function byKey(k, thr) {
+    return {
+      sport: b => b.sport, type: b => b.type, league: b => b.league, book: b => b.book, tipster: b => b.tipster,
+      odds: b => L.oddsRange(+b.odds),
+      level: b => !b.level ? 'SIN NIVEL' : b.level <= 2 ? 'N1–2' : b.level <= 4 ? 'N3–4' : b.level <= 6 ? 'N5–6' : 'N7+',
+      weekday: b => b.date ? WEEKDAYS[new Date(b.date + 'T12:00:00').getDay()] : null,
+      hour: b => { if (!b.created || b.created < 1e12) return null; const h = +new Date(b.created).toLocaleString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', hour12: false }); return h < 12 ? 'MAÑANA' : h < 16 ? 'MEDIODÍA' : h < 20 ? 'TARDE' : 'NOCHE'; },
+      origin: b => b.pickId ? 'DESDE PICK' : 'MANUAL',
+      fav: b => { const p = b.fair > 1 ? 1 / b.fair : b.odds > 1 ? 1 / b.odds : null; return p == null ? null : p >= 0.5 ? 'FAVORITO' : 'NO FAVORITO'; },
+      combo: b => (b.legs || []).length > 1 ? `COMBINADA ${(b.legs || []).length}` : 'SIMPLE',
+      live: b => b.live ? 'EN DIRECTO' : 'PREPARTIDO',
+      bonus: b => b.bonus ? 'GRATIS' : 'NORMAL',
+      value: b => { const e = L.edgeAtBet(b); return e == null ? null : e * 100 >= thr ? 'CON VALOR' : e >= 0 ? 'POCO VALOR' : 'SIN VALOR'; }
+    }[k];
+  }
+
+  // Rango del periodo elegido y del anterior equivalente (para comparar).
+  function periodRange(p, t) {
+    if (p === '7D') return { from: L.addDays(t, -6), to: t, prevFrom: L.addDays(t, -13), prevTo: L.addDays(t, -7), prevLabel: '7 DÍAS ANTERIORES' };
+    if (p === 'MES') { const m = t.slice(0, 7), pm = new Date(t.slice(0, 4), +t.slice(5, 7) - 2, 1); const ps = `${pm.getFullYear()}-${String(pm.getMonth() + 1).padStart(2, '0')}`;
+      return { from: m + '-01', to: t, prevFrom: ps + '-01', prevTo: ps + '-31', prevLabel: 'MES ANTERIOR' }; }
+    if (p === 'AÑO') { const y = +t.slice(0, 4); return { from: y + '-01-01', to: t, prevFrom: (y - 1) + '-01-01', prevTo: (y - 1) + '-12-31', prevLabel: 'AÑO ANTERIOR' }; }
+    return { from: '', to: '', prevFrom: null };
+  }
+
+  // Beneficio por mes en barras.
+  function monthBars(rows) {
+    if (!rows.length) return '<div class="muted">SIN DATOS</div>';
+    const W = 320, H = 120, pad = 18, max = Math.max(...rows.map(r => Math.abs(r.profit)), 0.01), bw = Math.min(34, (W - 10) / rows.length - 6), zero = H / 2;
+    const bars = rows.map((r, i) => {
+      const x = 5 + i * ((W - 10) / rows.length) + ((W - 10) / rows.length - bw) / 2, h = Math.abs(r.profit) / max * (H / 2 - pad);
+      const y = r.profit >= 0 ? zero - h : zero;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="3" fill="var(--${r.profit >= 0 ? 'pos' : 'neg'})" opacity=".85"><title>${r.key} · ${eur(r.profit)} · yield ${r.yield == null ? '—' : spct(r.yield, 1)}</title></rect>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--mono)">${r.key.slice(5)}/${r.key.slice(2, 4)}</text>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><line x1="0" x2="${W}" y1="${zero}" y2="${zero}" stroke="var(--line)"/>${bars}</svg>`;
+  }
+
+  // Calendario de las últimas 16 semanas: verde si ganaste ese día, rojo si perdiste (más intenso = más dinero).
+  function calendar(day, t) {
+    const end = new Date(t + 'T12:00:00'), start = new Date(end); start.setDate(end.getDate() - ((end.getDay() + 6) % 7) - 7 * 15);
+    const vals = Object.values(day).map(Math.abs), max = Math.max(0.01, ...vals);
+    let cols = '';
+    for (let w = 0; w < 16; w++) {
+      let cells = '';
+      for (let d = 0; d < 7; d++) {
+        const dt = new Date(start); dt.setDate(start.getDate() + w * 7 + d);
+        const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const v = day[k], fut = k > t;
+        const bg = fut ? 'transparent' : v == null ? 'var(--line2)' : v === 0 ? 'var(--faint)' : `color-mix(in srgb, var(--${v > 0 ? 'pos' : 'neg'}) ${Math.round(30 + 70 * Math.abs(v) / max)}%, transparent)`;
+        cells += `<i style="background:${bg}" title="${fdate(k)}${v != null ? ' · ' + eur(v) : ''}"></i>`;
+      }
+      cols += `<div>${cells}</div>`;
+    }
+    return `<div class="cal">${cols}</div><div class="muted" style="margin-top:6px;display:flex;justify-content:space-between"><span>HACE 16 SEMANAS</span><span>HOY</span></div>`;
+  }
+
+  // Tabla genérica de rendimiento agrupado.
+  function perfTable(rows) {
+    if (!rows.some(r => r.n)) return '<div class="muted">SIN DATOS</div>';
+    return `<table class="tbl"><tr><th></th><th>N</th><th>APOST.</th><th>BENEF.</th><th>YIELD</th><th>ACIERTO</th></tr>
+      ${rows.filter(r => r.n).map(g => `<tr><td class="ellipsis" style="max-width:110px">${esc(g.key)}</td><td class="num">${g.n}</td><td class="num">${mny(g.risk)}</td>
+        <td class="num ${cls(g.profit)}">${g.profit > 0 ? '+' : ''}${mny(g.profit)}</td><td class="num ${cls(g.yield)}">${g.yield == null ? '—' : spct(g.yield, 0)}</td><td class="num">${pct(g.winPct, 0)}</td></tr>`).join('')}</table>`;
+  }
+
   function renderStats() {
-    const all = bets(), t = today();
-    const inPeriod = b => statsPeriod === 'TOTAL' ? true
-      : statsPeriod === 'AÑO' ? b.date.slice(0, 4) === t.slice(0, 4)
-      : statsPeriod === 'MES' ? b.date.slice(0, 7) === t.slice(0, 7)
-      : b.date >= L.addDays(t, -6) && b.date <= t;
-    const bs = all.filter(inPeriod);
-    const s = L.summarize(bs), pk = L.peaks(bs), os = L.oddsStats(bs), st = L.streak(bs), clv = L.clvStats(bs);
+    const all = bets(), t = today(), st0 = settings();
+    const pr = periodRange(statsPeriod, t);
+    const okF = b => (!statsF.from || b.date >= statsF.from) && (!statsF.to || b.date <= statsF.to) && (!statsF.book || b.book === statsF.book) &&
+      (!statsF.sport || b.sport === statsF.sport) && (!statsF.league || b.league === statsF.league) && (!statsF.type || b.type === statsF.type) &&
+      (!statsF.origin || (statsF.origin === 'pick' ? !!b.pickId : !b.pickId));
+    const inRange = (b, from, to) => (!from || b.date >= from) && (!to || b.date <= to);
+    const bs = all.filter(b => inRange(b, pr.from, pr.to) && okF(b));
+    const prev = pr.prevFrom ? all.filter(b => inRange(b, pr.prevFrom, pr.prevTo) && okF(b)) : null;
+    const s = L.summarize(bs), pk = L.peaks(bs), os = L.oddsStats(bs), sk = L.streak(bs), clv = L.clvStats(bs);
     const f = L.funds(all, moves()).total;
     const nv = r => bs.filter(b => b.result === r).length;
-    const byOpts = { sport: 'DEPORTE', type: 'TIPO', tipster: 'TIPSTER', league: 'LIGA', book: 'CASA', odds: 'CUOTA' };
-    const groups = statsBy === 'odds' ? L.groupBy(bs, b => L.oddsRange(+b.odds), L.ODDS_RANGES.map(r => r.key)) : L.groupBy(bs, b => b[statsBy]);
     const kv = (k, v) => `<div class="kv"><span class="muted">${k}</span><span class="num">${v}</span></div>`;
     const orow = (k, o) => `<tr><td>${k}</td><td class="num">${o.n}</td><td class="num">${o.n ? odds(o.avg) : '—'}</td><td class="num">${o.n ? odds(o.min) : '—'}</td><td class="num">${o.n ? odds(o.max) : '—'}</td></tr>`;
-    const clvN = clv.n, goal = 300, st0 = settings();
+    const concl = (txt, tone) => `<div class="concl ${tone || ''}">${txt}</div>`;
+    const clvN = clv.n, goal = 300;
+
+    // ---- cálculos ----
+    const ev = L.expectedVsReal(bs), lt = L.luckTest(bs), cal = L.calibration(bs), mon = L.monthly(bs), dd = L.drawdown(bs), rec = L.streakRecords(bs), vol = L.volatility(bs);
+    const bfm = L.belowFairByMonth(bs), svs = L.stakeVsSuggested(bs, st0.unit, st0.kelly), vo = L.volume(bs), tl = L.tilt(bs), lw = L.limitWeeks(bs, st0.lossWeek);
+    const ps = prev ? L.summarize(prev) : null, pclv = prev ? L.clvStats(prev) : null;
+
+    // ---- frases ----
+    const cResult = s.n ? `Llevas <b class="${cls(s.profit)}">${seur(s.profit)}</b> en ${s.n} apuestas cerradas, con un yield de <b class="${cls(s.yield)}">${s.yield == null ? '—' : spct(s.yield, 1)}</b> y un ${pct(s.winPct, 0)} de acierto.` : 'Aún no hay apuestas cerradas con estos filtros.';
+    const cLuck = ev.n ? (ev.luck > 0
+      ? `En tus apuestas desde pick, según la cuota justa deberías llevar <b>${seur(ev.ev)}</b> y llevas <b>${seur(ev.real)}</b>: vas <b class="pos">${seur(ev.luck)}</b> por encima de lo esperado, así que te está acompañando la suerte.`
+      : `En tus apuestas desde pick, según la cuota justa deberías llevar <b>${seur(ev.ev)}</b> y llevas <b>${seur(ev.real)}</b>: vas <b class="neg">${seur(ev.luck)}</b> por debajo, es decir, mala suerte.`)
+      + (ev.ev < 0 ? ' Ojo: el esperado es negativo porque apuestas por debajo de la cuota justa; a la larga eso se paga.' : '')
+      + (ev.n < 20 ? ` Son solo ${ev.n} apuestas: tómalo como pista.` : '')
+      : 'Para comparar con lo esperado hacen falta apuestas hechas desde un pick (tienen cuota justa).';
+    const cIsLuck = !lt.n ? '' : !lt.enough ? `Con ${lt.n} apuestas todavía no se puede distinguir la habilidad de la suerte (hacen falta al menos 20; lo ideal, cientos).`
+      : lt.pLuck < 0.05 ? `Es poco probable que tu resultado sea solo suerte (pasaría por azar el ${pct(lt.pLuck, 1)} de las veces). Yield real probable: entre ${spct(lt.yieldLo, 0)} y ${spct(lt.yieldHi, 0)}.`
+        : `Tu resultado puede ser suerte: sin ninguna ventaja saldría algo así el ${pct(lt.pLuck, 0)} de las veces. Tu yield real probable está entre ${spct(lt.yieldLo, 0)} y ${spct(lt.yieldHi, 0)}.`;
+    const cClv = clv.avg == null ? 'Sin CLV todavía: se rellena con las apuestas hechas desde un pick.'
+      : `CLV medio <b class="${cls(clv.avg)}">${spct(clv.avg, 2)}</b> en ${clvN} apuestas (${pct(clv.pos, 0)} positivas). ${clv.avg > 0.01 ? 'Vas por buen camino.' : clv.avg >= 0 ? 'Justo en el límite: aún no hay ventaja clara.' : 'Estás apostando a peor precio que el mercado al cierre.'}`;
+    const lastBf = bfm[bfm.length - 1], firstBf = bfm[0];
+    const cDisc = !lastBf ? 'Sin apuestas con cuota justa para medir la disciplina.'
+      : `Este último mes, el <b class="${lastBf.below > 0.5 ? 'neg' : 'pos'}">${pct(lastBf.below, 0)}</b> de tus apuestas desde pick fueron por debajo de la cuota justa${bfm.length > 1 ? ` (${lastBf.below < firstBf.below ? 'mejor' : lastBf.below > firstBf.below ? 'peor' : 'igual'} que en ${firstBf.key.slice(5)}/${firstBf.key.slice(2, 4)}: ${pct(firstBf.below, 0)})` : ''}.`;
+    const cmp = (a, b, fmt, better) => b == null || a == null ? '—' : `${fmt(a)} <span class="${(better ? a > b : a < b) ? 'pos' : a === b ? 'muted' : 'neg'}">${a > b ? '↑' : a < b ? '↓' : '='}</span> <span class="muted">${fmt(b)}</span>`;
+
+    // ---- pestañas ----
     const secRes = `
+      <h2>CONCLUSIONES</h2>
+      <div class="card">${concl(cResult)}${concl(cLuck)}${cIsLuck ? concl(cIsLuck) : ''}${concl(cClv)}${concl(cDisc)}</div>
+      ${prev ? `<h2>FRENTE AL ${pr.prevLabel}</h2>
+      <div class="card">
+        ${kv('APUESTAS', cmp(s.n, ps.n, x => x, true))}
+        ${kv('BENEFICIO', cmp(s.profit, ps.profit, seur, true))}
+        ${kv('YIELD', cmp(s.yield, ps.yield, x => spct(x, 1), true))}
+        ${kv('CLV MEDIO', cmp(clv.avg, pclv.avg, x => spct(x, 2), true))}
+      </div>` : ''}
+      <h2>SUERTE FRENTE A HABILIDAD</h2>
+      <div class="card">
+        ${kv('ESPERADO (CUOTA JUSTA AL APOSTAR)', ev.n ? seur(ev.ev) : '—')}
+        ${kv('REAL (MISMAS APUESTAS)', ev.n ? `<span class="${cls(ev.real)}">${seur(ev.real)}</span>` : '—')}
+        ${kv('SUERTE', ev.n ? `<span class="${cls(ev.luck)}">${seur(ev.luck)}</span>` : '—')}
+        ${kv('ESPERADO SEGÚN EL CIERRE (CLV)', ev.nClose ? seur(ev.evClose) : '—')}
+        ${kv('¿PUEDE SER SUERTE?', lt.enough ? `${pct(lt.pLuck, 0)} de probabilidad` : 'POCOS DATOS')}
+        ${kv('YIELD REAL PROBABLE (95 %)', lt.enough ? `${spct(lt.yieldLo, 0)} a ${spct(lt.yieldHi, 0)}` : '—')}
+        <div class="muted hint" style="margin-top:6px">Esperado = lo que ganarías de media apostando a esas cuotas frente a la justa. Solo cuenta apuestas simples desde un pick (${ev.n}).</div>
+      </div>`;
+
+    const secRend = `
       <h2>RENDIMIENTO · APUESTAS CERRADAS</h2>
       <div class="card">
-        ${kv('APUESTAS', `${s.n} · <span class="pos">${s.w}G</span> <span class="neg">${s.l}P</span> ${nv('V')}N${nv('HW') + nv('HL') ? ` · ${nv("HW")} 1/2G ${nv("HL")} 1/2P` : ''}${nv('CO') ? ` · ${nv('CO')}CO` : ''}`)}
+        ${kv('APUESTAS', `${s.n} · <span class="pos">${s.w}G</span> <span class="neg">${s.l}P</span> ${nv('V')}N${nv('HW') + nv('HL') ? ` · ${nv('HW')} 1/2G ${nv('HL')} 1/2P` : ''}${nv('CO') ? ` · ${nv('CO')}CO` : ''}`)}
         ${kv('APOSTADO', eur(s.risk))}
         ${kv('BENEFICIO', `<span class="${cls(s.profit)}">${seur(s.profit)}</span>`)}
         ${kv('RETORNO (YIELD)', `<span class="${cls(s.yield)}">${spct(s.yield)}</span>`)}
         ${kv('ACIERTO', pct(s.winPct))}
-        ${kv('RACHA ACTUAL', st.n ? `<span class="${st.type === 'W' ? 'pos' : 'neg'}">${st.n} ${st.type === 'W' ? 'GANADA' : 'PERDIDA'}${st.n > 1 ? 'S' : ''}</span>` : '—')}
+        ${kv('RACHA ACTUAL', sk.n ? `<span class="${sk.type === 'W' ? 'pos' : 'neg'}">${sk.n} ${sk.type === 'W' ? 'GANADA' : 'PERDIDA'}${sk.n > 1 ? 'S' : ''}</span>` : '—')}
       </div>
-      <h2>PICOS Y CAÍDAS · BENEFICIO ACUMULADO</h2>
+      <h2>BENEFICIO POR MES</h2>
+      <div class="card">${monthBars(mon)}</div>
+      <h2>CALENDARIO</h2>
+      <div class="card">${calendar(L.daily(bs), t)}</div>
+      <h2>PEOR CAÍDA</h2>
       <div class="card">
+        ${dd.max < 0 ? concl(`Tu peor bache fue de <b class="neg">${seur(dd.max)}</b>, del ${fdate(dd.peakDate || bs[0].date)} al ${fdate(dd.troughDate)} (${dd.bets} apuestas). ${dd.recoveredDate ? `Lo recuperaste el ${fdate(dd.recoveredDate)}.` : 'Todavía no lo has recuperado.'}`) : concl('Sin caídas: nunca has estado por debajo de tu mejor marca.')}
         ${kv('ACTUAL', `<span class="${cls(pk.current)}">${seur(pk.current)}</span>`)}
         ${kv('MÁXIMO HISTÓRICO', seur(pk.max))}
-        ${kv('MÍNIMO HISTÓRICO', seur(pk.min))}
         ${kv('CAÍDA DESDE EL PICO', `<span class="${cls(pk.fromPeak)}">${seur(pk.fromPeak)}</span>`)}
-        ${kv('SUBIDA DESDE EL MÍNIMO', `<span class="${cls(pk.fromTrough)}">${seur(pk.fromTrough)}</span>`)}
+      </div>
+      <h2>RACHAS Y VOLATILIDAD</h2>
+      <div class="card">
+        ${kv('MÁS GANADAS SEGUIDAS', rec.win)}${kv('MÁS PERDIDAS SEGUIDAS', rec.loss)}
+        ${kv('VARIACIÓN POR APUESTA', vol ? `${eur(vol.sd)}${vol.perStake != null ? ` · ${fnum(vol.perStake, 1)} × importe medio` : ''}` : '—')}
+        <div class="muted hint" style="margin-top:6px">Con cuotas altas la variación sube: rachas largas de pérdidas son normales aunque el sistema funcione.</div>
       </div>`;
+
     const secClv = `
       <h2>CLV · <span class="acc">¿FUNCIONA EL SISTEMA?</span></h2>
       <div class="card">
-        ${kv('CLV MEDIO', clv.avg == null ? '—' : `<span class="${cls(clv.avg)}">${spct(clv.avg, 2)}</span>`)}
-        ${kv('APUESTAS CON CLV +', clv.pos == null ? '—' : pct(clv.pos, 0))}
+        ${concl(cClv)}
         ${kv('MUESTRA', `<b class="${clvN >= goal ? 'pos' : 'yellow'}">${clvN} / ${goal}</b>`)}
         ${kv('ESPERANDO CIERRE', bs.filter(b => b.pickId && typeof b.clv !== 'number' && !b.clvMissed && (b.legs || []).length <= 1).length)}
-        <div style="height:4px;background:var(--line);margin-top:6px"><div style="height:4px;width:${Math.min(100, clvN / goal * 100)}%;background:var(--cyan)"></div></div>
-        <div class="muted hint" style="margin-top:8px">Regla: fíate solo con un CLV medio superior a +1 % en más de 300 apuestas. Se rellena con las apuestas hechas desde un pick: al empezar el partido se guarda la cuota de cierre de Pinnacle.</div>
+        <div style="height:4px;background:var(--line);margin-top:6px;border-radius:4px"><div style="height:4px;border-radius:4px;width:${Math.min(100, clvN / goal * 100)}%;background:var(--cyan)"></div></div>
       </div>
       ${clvN ? `<h2>CLV MEDIO ACUMULADO</h2>
       <div class="card">${lineChart(L.clvSeries(bs), { id: 'clv', label: 'CLV medio acumulado', color: 'var(--cyan)',
@@ -1108,29 +1236,61 @@
         tip: p => `${fdate(p.date)} · ${p.n} APUESTAS<br>MEDIA <b class="${cls(p.value)}">${spct(p.value, 2)}</b> · ${esc(selText(p.bet))} <span class="${cls(p.bet.clv)}">${spct(p.bet.clv, 1)}</span>` })}
         <div class="muted hint" style="margin-top:6px">Si la línea se asienta por encima de la amarilla (+1 %) con muchas apuestas, el sistema funciona.</div></div>
       <h2>CLV SEGÚN TU VENTAJA AL APOSTAR</h2>
-      <div class="card">${clvTable(L.clvBy(bs, b => { const e = L.edgeAtBet(b); return e == null ? null : e * 100 >= st0.threshold ? EDGE_KEYS[0] : e >= 0 ? EDGE_KEYS[1] : EDGE_KEYS[2]; }, EDGE_KEYS), true)}
-        <div class="muted hint" style="margin-top:6px">Ventaja = tu cuota frente a la justa del pick al apostar. ≥ umbral: con valor · justa–umbral: poco valor · bajo justa: sin valor. Aquí ves si compensa esperar a la cuota mínima (≥).</div></div>
+      <div class="card">${clvTable(L.clvBy(bs, b => { const e = L.edgeAtBet(b); return e == null ? null : e * 100 >= st0.threshold ? EDGE_KEYS[0] : e >= 0 ? EDGE_KEYS[1] : EDGE_KEYS[2]; }, EDGE_KEYS), true)}</div>
       <h2>CLV POR LIGA</h2>
       <div class="card">${clvTable(L.clvBy(bs, b => b.league))}</div>
       <h2>CLV POR MERCADO</h2>
       <div class="card">${clvTable(L.clvBy(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>
       <h2>CLV SEGÚN LO PRONTO QUE APUESTAS</h2>
-      <div class="card">${clvTable(L.clvBy(bs, L.hourBucket, L.HOUR_KEYS), true)}
-        <div class="muted hint" style="margin-top:6px">Horas que faltaban para el partido al apuntar la apuesta. Si un tramo tiene mejor CLV, ese es tu mejor momento. Con pocas apuestas es solo una pista.</div></div>
+      <div class="card">${clvTable(L.clvBy(bs, L.hourBucket, L.HOUR_KEYS), true)}</div>
       <h2>FIABILIDAD DE LA CUOTA JUSTA</h2>
-      <div class="card"><div class="muted hint" style="margin-bottom:6px">Cuánto cambió la probabilidad justa entre el pick y el cierre. Error bajo: el precio justo ya era fiable. Sesgo: hacia dónde se movió en media.</div>
-        ${driftTable(L.fairDrift(bs, b => b.league))}
-        <div class="muted" style="margin:10px 0 6px">POR MERCADO</div>
-        ${driftTable(L.fairDrift(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>` : ''}`;
+      <div class="card">${driftTable(L.fairDrift(bs, b => b.league))}</div>` : ''}
+      <h2>CALIBRACIÓN · ¿ACIERTAS LO QUE DICE LA CUOTA?</h2>
+      <div class="card"><table class="tbl"><tr><th>PROBABILIDAD</th><th>N</th><th>DEBERÍAS</th><th>ACIERTAS</th></tr>
+        ${cal.map(r => `<tr><td>${r.key}</td><td class="num">${r.n}</td><td class="num">${r.n ? pct(r.expPct, 0) : '—'}</td><td class="num ${r.n ? (r.actPct >= r.expPct ? 'pos' : 'neg') : ''}">${r.n ? pct(r.actPct, 0) : '—'}</td></tr>`).join('')}</table>
+        <div class="muted hint" style="margin-top:6px">Probabilidad justa del pick (o la de tu cuota si no viene de un pick). Con pocas apuestas por tramo, las diferencias son normales.</div></div>`;
+
+    const secDisc = `
+      <h2>CUOTA FRENTE A LA JUSTA</h2>
+      <div class="card">${concl(cDisc)}
+        ${bfm.length ? `<table class="tbl"><tr><th>MES</th><th>N</th><th>BAJO JUSTA</th><th>VENTAJA MEDIA</th></tr>
+          ${bfm.map(r => `<tr><td>${r.key.slice(5)}/${r.key.slice(2, 4)}</td><td class="num">${r.n}</td><td class="num ${r.below > 0.5 ? 'neg' : 'pos'}">${pct(r.below, 0)}</td><td class="num ${cls(r.avgEdge)}">${spct(r.avgEdge, 1)}</td></tr>`).join('')}</table>` : ''}
+        <div class="muted hint" style="margin-top:6px">El objetivo es que "bajo justa" baje con el tiempo: cada apuesta por debajo de la justa cuesta dinero a la larga.</div></div>
+      <h2>TU NIVEL FRENTE AL SUGERIDO</h2>
+      <div class="card">
+        ${svs.n ? concl(`En ${svs.n} apuestas desde pick, tu nivel medio fue <b>${fnum(svs.avgReal, 1)}</b> y el sugerido <b>${fnum(svs.avgSug, 1)}</b>. Apostaste por encima de lo sugerido en el <b class="${svs.above / svs.n > 0.5 ? 'neg' : 'pos'}">${pct(svs.above / svs.n, 0)}</b> de los casos${svs.noValue ? `, y ${svs.noValue} sin valor (sugerido: no apostar)` : ''}.`) : concl('Sin apuestas desde pick con nivel para comparar.')}
+        ${svs.n ? kv('POR ENCIMA / IGUAL / POR DEBAJO', `${svs.above} / ${svs.same} / ${svs.below}`) : ''}
+      </div>
+      <h2>VOLUMEN</h2>
+      <div class="card">
+        ${kv('DÍAS CON APUESTAS', vo.days)}${kv('APUESTAS POR DÍA ACTIVO', vo.perDay == null ? '—' : fnum(vo.perDay, 1))}
+        ${kv('APUESTAS POR SEMANA', vo.perWeek == null ? '—' : fnum(vo.perWeek, 1))}${kv('MÁXIMO EN UN DÍA', vo.maxDay ? `${vo.maxDay} · ${fdate(vo.maxDate)}` : '—')}
+      </div>
+      <h2>DESPUÉS DE GANAR O PERDER</h2>
+      <div class="card">
+        ${tl.afterLoss.n && tl.afterWin.n ? concl(tl.afterLoss.vsAvg > 0.15 ? `Después de perder subes el importe un <b class="neg">${spct(tl.afterLoss.vsAvg, 0)}</b> sobre tu media: cuidado con querer recuperar.` : 'Después de perder no subes el importe: buena señal de disciplina.') : ''}
+        <table class="tbl"><tr><th></th><th>N</th><th>IMPORTE MEDIO</th><th>VS MEDIA</th><th>YIELD</th></tr>
+          <tr><td class="pos">TRAS GANAR</td><td class="num">${tl.afterWin.n}</td><td class="num">${tl.afterWin.avgStake == null ? '—' : mny(tl.afterWin.avgStake)}</td><td class="num">${tl.afterWin.vsAvg == null ? '—' : spct(tl.afterWin.vsAvg, 0)}</td><td class="num ${cls(tl.afterWin.yield)}">${tl.afterWin.yield == null ? '—' : spct(tl.afterWin.yield, 0)}</td></tr>
+          <tr><td class="neg">TRAS PERDER</td><td class="num">${tl.afterLoss.n}</td><td class="num">${tl.afterLoss.avgStake == null ? '—' : mny(tl.afterLoss.avgStake)}</td><td class="num">${tl.afterLoss.vsAvg == null ? '—' : spct(tl.afterLoss.vsAvg, 0)}</td><td class="num ${cls(tl.afterLoss.yield)}">${tl.afterLoss.yield == null ? '—' : spct(tl.afterLoss.yield, 0)}</td></tr></table>
+      </div>
+      <h2>LÍMITES DE PÉRDIDA</h2>
+      <div class="card">${lw ? kv('SEMANAS QUE SUPERARON EL LÍMITE', `<span class="${lw.over ? 'neg' : 'pos'}">${lw.over} de ${lw.weeks}</span>`) : '<div class="muted hint">No tienes límite semanal. Puedes ponerlo en Ajustes → Stake y límites.</div>'}</div>`;
+
+    const crossOpts = ['league', 'type', 'book', 'sport', 'odds', 'level', 'origin', 'fav'];
+    const ct = L.crossTab(bs, byKey(crossRow, st0.threshold), byKey(crossCol, st0.threshold), 7, 3);
     const secDet = `
+      <h2>RENDIMIENTO POR</h2>
+      <div class="chips scroll-x">${Object.keys(BY_LABEL).map(k => `<button data-by="${k}" class="${k === statsBy ? 'on' : ''}">${BY_LABEL[k]}</button>`).join('')}</div>
+      <div class="card">${perfTable(L.groupBy(bs, byKey(statsBy, st0.threshold), BY_ORDER[statsBy]))}</div>
+      <h2>TABLA CRUZADA · YIELD</h2>
+      <div class="row" style="gap:6px"><select id="crossR" class="grow">${crossOpts.map(k => `<option value="${k}" ${k === crossRow ? 'selected' : ''}>${BY_LABEL[k]}</option>`).join('')}</select>
+        <span class="muted">×</span><select id="crossC" class="grow">${crossOpts.map(k => `<option value="${k}" ${k === crossCol ? 'selected' : ''}>${BY_LABEL[k]}</option>`).join('')}</select></div>
+      <div class="card">${ct.rows.length ? `<table class="tbl"><tr><th></th>${ct.cols.map(c => `<th class="ellipsis" style="max-width:70px">${esc(c)}</th>`).join('')}</tr>
+        ${ct.rows.map(r => `<tr><td class="ellipsis" style="max-width:100px">${esc(r)}</td>${ct.cols.map(c => { const x = ct.cells[r + '|' + c]; return `<td class="num ${x.n ? cls(x.yield) : ''}">${x.n ? `${spct(x.yield, 0)}<span class="muted"> ·${x.n}</span>` : '—'}</td>`; }).join('')}</tr>`).join('')}</table>
+        <div class="muted hint" style="margin-top:6px">Cada celda: yield · número de apuestas. Busca combinaciones con muchas apuestas y yield positivo: ahí están tus nichos.</div>` : '<div class="muted">SIN DATOS</div>'}</div>
       <h2>CUOTAS</h2>
       <div class="card"><table class="tbl"><tr><th></th><th>N</th><th>MEDIA</th><th>MÍN</th><th>MÁX</th></tr>
         ${orow('TODAS', os.all)}${orow('<span class="pos">GANADAS</span>', os.won)}${orow('<span class="neg">PERDIDAS</span>', os.lost)}</table></div>
-      <h2>RENDIMIENTO POR</h2>
-      <div class="chips scroll-x">${Object.keys(byOpts).map(k => `<button data-by="${k}" class="${k === statsBy ? 'on' : ''}">${byOpts[k]}</button>`).join('')}</div>
-      <div class="card"><table class="tbl"><tr><th></th><th>N</th><th>APOST.</th><th>BENEF.</th><th>YIELD</th><th>ACIERTO</th></tr>
-        ${groups.map(g => `<tr><td class="ellipsis" style="max-width:110px">${esc(g.key)}</td><td class="num">${g.n}</td><td class="num">${mny(g.risk)}</td>
-          <td class="num ${cls(g.profit)}">${g.profit > 0 ? '+' : ''}${mny(g.profit)}</td><td class="num ${cls(g.yield)}">${spct(g.yield, 0)}</td><td class="num">${pct(g.winPct, 0)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">SIN DATOS</td></tr>'}</table></div>
       <h2>CAJA</h2>
       <div class="card">
         ${kv('DEPÓSITOS', eur(f.deposits))}${kv('RETIRADAS', eur(f.withdrawals))}${kv('DEPÓSITOS NETOS', eur(f.net))}
@@ -1138,14 +1298,42 @@
       </div>
       <h2>RESUMEN POR PERIODO</h2>
       <div class="card">${periodTable(L.periods(all, t))}</div>`;
-    const tabs = [['res', 'RESUMEN'], ['clv', 'CLV'], ['det', 'DETALLE']];
+
+    const FLS = { book: 'Casa', sport: 'Deporte', league: 'Liga', type: 'Tipo', origin: 'Origen' };
+    const act = Object.keys(FLS).filter(k => statsF[k]).map(k => [k, `${FLS[k]}: ${k === 'origin' ? (statsF.origin === 'pick' ? 'desde pick' : 'manual') : statsF[k]}`]);
+    if (statsF.from || statsF.to) act.unshift(['dates', `${statsF.from ? fdate(statsF.from) : '…'} – ${statsF.to ? fdate(statsF.to) : '…'}`]);
+    const tabs = [['res', 'RESUMEN'], ['rend', 'RENDIMIENTO'], ['clv', 'CLV'], ['disc', 'DISCIPLINA'], ['det', 'DETALLE']];
+    if (!tabs.some(x => x[0] === statsTab)) statsTab = 'res';
     view.innerHTML = `
-      <div class="seg" style="margin-top:12px">${['7D', 'MES', 'AÑO', 'TOTAL'].map(p => `<button data-p="${p}" class="${p === statsPeriod ? 'on' : ''}">${p}</button>`).join('')}</div>
-      <div class="tabs2">${tabs.map(([k, t]) => `<button data-stab="${k}" class="${statsTab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
-      ${statsTab === 'clv' ? secClv : statsTab === 'det' ? secDet : secRes}`;
+      <div class="row" style="gap:8px;margin-top:12px">
+        <div class="seg grow">${['7D', 'MES', 'AÑO', 'TOTAL'].map(p => `<button data-p="${p}" class="${p === statsPeriod ? 'on' : ''}">${p}</button>`).join('')}</div>
+        <button class="fbtn" id="statsF" aria-label="Filtros">${icon('filter', 18)}${act.length ? `<span>${act.length}</span>` : ''}</button></div>
+      ${act.length ? `<div class="chips scroll-x" style="margin-top:8px">${act.map(([k, txt]) => `<button class="on" data-sfx="${k}">${esc(txt)} <i>×</i></button>`).join('')}</div>` : ''}
+      <div class="tabs2 scroll-x">${tabs.map(([k, tt]) => `<button data-stab="${k}" class="${statsTab === k ? 'on' : ''}">${tt}</button>`).join('')}</div>
+      ${{ res: secRes, rend: secRend, clv: secClv, disc: secDisc, det: secDet }[statsTab]}`;
+
     view.querySelectorAll('[data-stab]').forEach(el => el.onclick = () => { statsTab = el.dataset.stab; render(); window.scrollTo(0, 0); });
     view.querySelectorAll('[data-p]').forEach(el => el.onclick = () => { statsPeriod = el.dataset.p; render(); });
     view.querySelectorAll('[data-by]').forEach(el => el.onclick = () => { statsBy = el.dataset.by; render(); });
+    view.querySelectorAll('[data-sfx]').forEach(el => el.onclick = () => { if (el.dataset.sfx === 'dates') { statsF.from = ''; statsF.to = ''; } else statsF[el.dataset.sfx] = ''; render(); });
+    const cr = view.querySelector('#crossR'), cc = view.querySelector('#crossC');
+    if (cr) cr.onchange = () => { crossRow = cr.value; render(); };
+    if (cc) cc.onchange = () => { crossCol = cc.value; render(); };
+    view.querySelector('#statsF').onclick = () => {
+      const uniq = k => Array.from(new Set(all.map(b => b[k]).filter(Boolean))).sort();
+      const sel = (k, label, vals) => `<label>${label}</label><select data-sf="${k}"><option value="">Todas</option>${vals.map(([v, tt]) => `<option value="${esc(v)}" ${statsF[k] === v ? 'selected' : ''}>${esc(tt)}</option>`).join('')}</select>`;
+      const m = sheet(`<h3>FILTROS DE STATS</h3>
+        <div class="row" style="gap:8px"><div class="grow"><label>DESDE</label><input type="date" data-sf="from" value="${esc(statsF.from)}"></div>
+          <div class="grow"><label>HASTA</label><input type="date" data-sf="to" value="${esc(statsF.to)}"></div></div>
+        ${sel('book', 'CASA', uniq('book').map(v => [v, v]))}${sel('sport', 'DEPORTE', uniq('sport').map(v => [v, v]))}
+        ${sel('league', 'LIGA', uniq('league').map(v => [v, v]))}${sel('type', 'TIPO', uniq('type').map(v => [v, v]))}
+        ${sel('origin', 'ORIGEN', [['pick', 'Desde pick'], ['manual', 'Manual']])}
+        <div class="muted hint" style="margin-top:8px">Las fechas se suman al periodo de arriba: para un rango libre, elige TOTAL.</div>
+        <div class="actions"><button id="sfclear">QUITAR TODOS</button><button class="primary" id="sfok">APLICAR</button></div>`);
+      m.querySelectorAll('[data-sf]').forEach(el => el.onchange = () => { statsF[el.dataset.sf] = el.value; });
+      m.querySelector('#sfclear').onclick = () => { Object.keys(statsF).forEach(k => { statsF[k] = ''; }); closeSheet(); render(); };
+      m.querySelector('#sfok').onclick = () => { closeSheet(); render(); };
+    };
     wireChart();
   }
 
