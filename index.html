@@ -248,9 +248,9 @@
     .cal { display: flex; gap: 3px; justify-content: space-between; }
     .cal > div { display: flex; flex-direction: column; gap: 3px; flex: 1; }
     .cal i { display: block; aspect-ratio: 1; border-radius: 3px; max-width: 18px; }
-    .tabs2 { gap: 0 18px; flex-wrap: wrap; border-bottom: 0; }
-    .tabs2 button { flex: none; border-bottom: 2px solid var(--line2); margin-bottom: 6px; }
-    .tabs2 button.on { border-bottom-color: var(--pos); }
+    .tabs2 { gap: 8px 6px; flex-wrap: wrap; justify-content: center; border-bottom: 0; margin-top: 12px; }
+    .tabs2 button { flex: 0 0 calc(25% - 5px); text-align: center; padding: 10px 0; font-size: 10px; letter-spacing: .06em; background: var(--card2); border: 1px solid var(--line2); border-radius: 12px; margin: 0; white-space: nowrap; }
+    .tabs2 button.on { color: var(--pos); border-color: var(--pos); background: color-mix(in srgb, var(--pos) 10%, transparent); }
     body.hide-amt .concl b.pos, body.hide-amt .concl b.neg { letter-spacing: .1em; }
     .gauge { position: relative; height: 10px; border-radius: 6px; background: var(--line2); overflow: hidden; }
     .gauge i { display: block; height: 100%; border-radius: 6px; }
@@ -294,9 +294,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=58"></script>
-  <script src="logic.js?v=58"></script>
-  <script src="store.js?v=58"></script>
-  <script src="app.js?v=58"></script>
+  <script src="version.js?v=61"></script>
+  <script src="logic.js?v=61"></script>
+  <script src="store.js?v=61"></script>
+  <script src="app.js?v=61"></script>
 </body>
 </html>

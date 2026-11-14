@@ -1249,6 +1249,38 @@
         <td class="num ${cls(g.profit)}">${g.profit > 0 ? '+' : ''}${mny(g.profit)}</td><td class="num ${cls(g.yield)}">${g.yield == null ? '—' : spct(g.yield, 0)}</td><td class="num">${pct(g.winPct, 0)}</td></tr>`).join('')}</table>`;
   }
 
+  // Barras interactivas: items = [{v, col, tip}], refs = [{v, col, label}]
+  function barChart(items, refs) {
+    if (!items.length) return '<div class="muted hint">SIN DATOS</div>';
+    refs = refs || [];
+    const W = 320, H = 130, pt = 8, pb = 6, pr = 34, n = items.length;
+    const max = Math.max(...items.map(x => x.v), ...refs.map(r => r.v)) * 1.1 || 1;
+    const slot = (W - pr) / n, bw = Math.max(2, Math.min(18, slot - 1.5));
+    const y = v => H - pb - (H - pt - pb) * v / max;
+    const rl = refs.map(r => `<line x1="0" x2="${W - pr}" y1="${y(r.v).toFixed(1)}" y2="${y(r.v).toFixed(1)}" stroke="${r.col}" stroke-dasharray="3 4" opacity=".7"/><text x="${W - pr + 4}" y="${(y(r.v) + 3).toFixed(1)}" font-size="9" fill="${r.col}" font-family="var(--mono)">${r.label}</text>`).join('');
+    const bars = items.map((it, i) => `<rect x="${(i * slot + (slot - bw) / 2).toFixed(1)}" y="${y(it.v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, H - pb - y(it.v)).toFixed(1)}" rx="2" fill="${it.col}" opacity=".85"/>
+      <rect class="iv" x="${(i * slot).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${H}" fill="transparent" data-tip="${esc(it.tip)}"/>`).join('');
+    return `<div class="ivbox"><svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><line x1="0" x2="${W - pr}" y1="${H - pb}" y2="${H - pb}" stroke="var(--line)"/>${rl}${bars}</svg><div class="tip"></div></div>`;
+  }
+  // Abanico de la simulación: banca más probable y rangos tras cada apuesta
+  function fanChart(fan) {
+    const W = 320, H = 150, pl = 2, pr = 40, pt = 8, pb = 18, n = fan.length - 1;
+    const hi = Math.max(1.2, ...fan.map(f => f.p95)), lo = Math.min(0.5, ...fan.map(f => f.p5)) * 0.95;
+    const x = i => pl + (W - pl - pr) * i / n, y = v => pt + (H - pt - pb) * (1 - (v - lo) / (hi - lo));
+    const line = k => fan.map((f, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(f[k]).toFixed(1)).join(' ');
+    const band = (k1, k2) => line(k1) + ' ' + fan.slice().reverse().map(f => 'L' + x(f.i).toFixed(1) + ' ' + y(f[k2]).toFixed(1)).join(' ') + ' Z';
+    const last = fan[n], step = Math.max(1, Math.round(n / 20));
+    const cols = fan.filter(f => f.i % step === 0).map(f => `<rect class="iv" x="${(x(f.i) - (W - pl - pr) / n * step / 2).toFixed(1)}" y="0" width="${((W - pl - pr) / n * step).toFixed(1)}" height="${H}" fill="transparent" data-tip="${esc(`Tras <b>${f.i}</b> apuestas<br>Normal: <b>${pct(f.p50, 0)}</b> de tu banca<br>Rango habitual: ${pct(f.p25, 0)} – ${pct(f.p75, 0)}<br>Mal día (1 de 20): <span class="neg">${pct(f.p5, 0)}</span><br>Buen día (1 de 20): <span class="pos">${pct(f.p95, 0)}</span>`)}"/>`).join('');
+    const lab = (v, c) => `<text x="${W - pr + 4}" y="${(y(v) + 3).toFixed(1)}" font-size="9" fill="${c}" font-family="var(--mono)">${Math.round(v * 100)} %</text>`;
+    return `<div class="ivbox"><svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">
+      <path d="${band('p5', 'p95')}" fill="var(--cyan)" opacity=".13"/><path d="${band('p25', 'p75')}" fill="var(--cyan)" opacity=".2"/>
+      <line x1="${pl}" x2="${W - pr}" y1="${y(1).toFixed(1)}" y2="${y(1).toFixed(1)}" stroke="var(--yellow)" stroke-dasharray="3 4" opacity=".7"/>
+      <path d="${line('p50')}" fill="none" stroke="var(--cyan)" stroke-width="2"/>
+      ${lab(last.p95, 'var(--pos)')}${lab(last.p50, 'var(--cyan)')}${lab(last.p5, 'var(--neg)')}${lab(1, 'var(--yellow)')}
+      <text x="${pl}" y="${H - 3}" font-size="9" fill="var(--muted)" font-family="var(--mono)">0</text><text x="${W - pr}" y="${H - 3}" font-size="9" fill="var(--muted)" font-family="var(--mono)" text-anchor="end">${n} APUESTAS</text>
+      ${cols}</svg><div class="tip"></div></div>`;
+  }
+
   function renderStats() {
     const all = bets(), t = today(), st0 = settings();
     const pr = periodRange(statsPeriod, t);
@@ -1280,6 +1312,13 @@
     if (rk.kelly.noEdgeMoney != null) rpts += rk.kelly.noEdgeMoney > 0.6 ? 2 : rk.kelly.noEdgeMoney > 0.3 ? 1 : 0;
     if (sim) rpts += sim.pBelow75 > 0.3 ? 2 : sim.pBelow75 > 0.1 ? 1 : 0;
     if (rk.ddPct != null) rpts += rk.ddPct < -0.3 ? 2 : rk.ddPct < -0.15 ? 1 : 0;
+    const rkBB = L.bankBefore(all, moves());
+    const rkReal = all.filter(b => !b.bonus && (+b.stake) > 0).sort(L.byTime);
+    const sizeItems = rkReal.filter(b => rkBB[b.id] > 0).slice(-60).map(b => { const f = b.stake / rkBB[b.id]; return { v: f * 100, col: `var(--${f > 0.05 ? 'neg' : f > 0.02 ? 'yellow' : 'pos'})`, tip: `${fdate(b.date)} · ${esc(selText(b))}<br><b>${pctS(f, 1)}</b> de la banca · ${eur(b.stake)}` }; });
+    const dayMap = {}; rkReal.forEach(b => { (dayMap[b.date] = dayMap[b.date] || { sum: 0, n: 0, bb: rkBB[b.id] || 0 }); dayMap[b.date].sum += +b.stake; dayMap[b.date].n++; });
+    const dayItems = Object.keys(dayMap).sort().slice(-30).map(d => { const o = dayMap[d], f = o.bb > 0 ? o.sum / o.bb : null; return { v: o.sum, col: `var(--${f != null && f > 0.1 ? 'neg' : f != null && f > 0.05 ? 'yellow' : 'cyan'})`, tip: `${fdate(d)} · <b>${eur(o.sum)}</b> apostados<br>${o.n} apuesta${o.n > 1 ? 's' : ''}${f != null ? ` · ${pctS(f, 0)} de la banca` : ''}` }; });
+    const bser = L.bankSeries(all, moves()); let ddPk = -Infinity;
+    const ddSeries = bser.map(p => { ddPk = Math.max(ddPk, p.value); return { date: p.date, value: ddPk > 0 ? p.value / ddPk - 1 : 0, bankv: p.value, peak: ddPk }; });
     const rLevel = rpts >= 5 ? ['ALTO', 'neg'] : rpts >= 3 ? ['MEDIO', 'yellow'] : ['BAJO', 'pos'];
 
     // ---- frases ----
@@ -1354,26 +1393,30 @@
       </div>`;
 
     // Barra de medidor: valor sobre un máximo, con marcas en los umbrales (verde hasta el primero, amarillo hasta el segundo, rojo después).
-    const gauge = (v, max, a, b) => `<div class="gauge"><i style="width:${Math.min(100, Math.max(1, v / max * 100)).toFixed(1)}%;background:var(--${v > b ? 'neg' : v > a ? 'yellow' : 'pos'})"></i><u style="left:${a / max * 100}%"></u><u style="left:${b / max * 100}%"></u></div>`;
+    const gauge = (v, max, a, b, tip) => `<div class="ivbox"><div class="gauge" data-tip="${esc(tip || '')}"><i style="width:${Math.min(100, Math.max(1, v / max * 100)).toFixed(1)}%;background:var(--${v > b ? 'neg' : v > a ? 'yellow' : 'pos'})"></i><u style="left:${a / max * 100}%"></u><u style="left:${b / max * 100}%"></u></div><div class="tip"></div></div>`;
     const qLoss = s.n ? 1 - (s.w + 0) / Math.max(1, s.w + s.l) : null;
     const secRisk = `
       <h2>NIVEL DE RIESGO</h2>
       <div class="card">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span class="tag" style="font-size:12px;padding:4px 12px;color:var(--${rLevel[1]});border:1px solid var(--${rLevel[1]});background:var(--card2)">RIESGO ${rLevel[0]}</span><span class="muted hint">según tamaño de apuesta, apuestas sin ventaja, simulación y peor caída</span></div>
-        ${avgSt == null ? concl('Aún no hay apuestas con banca para medir el riesgo.') : concl(`Apuestas de media un <b class="${avgSt > 0.05 ? 'neg' : avgSt > 0.02 ? 'yellow' : 'pos'}">${pctS(avgSt, 1)}</b> de tu banca por apuesta (la mayor, ${pctS(rk.stake.max, 1)}). ${avgSt > 0.05 ? 'Es mucho: con esos importes unas pocas pérdidas seguidas se notan enseguida. Lo habitual en profesionales es el 1–3 %.' : avgSt > 0.02 ? 'Es un nivel moderado: aceptable si tienes ventaja real.' : 'Es un nivel prudente.'}`)}
-        ${rk.kelly.n ? concl(`El <b class="${rk.kelly.noEdgeMoney > 0.6 ? 'neg' : rk.kelly.noEdgeMoney > 0.3 ? 'yellow' : 'pos'}">${pctS(rk.kelly.noEdgeMoney, 0)}</b> del dinero apostado desde picks fue en apuestas sin ventaja sobre la cuota justa: arriesgas sin compensación.`) : ''}
-        ${sim ? concl(`Si sigues apostando como hasta ahora, en ${sim.n} apuestas lo más probable es acabar con el <b class="${cls(sim.p50 - 1)}">${pctS(sim.p50, 0)}</b> de tu banca de hoy; 1 de cada 20 veces con menos del <b class="neg">${pctS(sim.p5, 0)}</b>. Probabilidad de perder la mitad: <b class="${sim.pBelow50 > 0.1 ? 'neg' : ''}">${pctS(sim.pBelow50, 0)}</b>.`) : concl('Hacen falta al menos 5 apuestas cerradas para simular el riesgo.')}
+        ${avgSt == null ? concl('Aún no hay apuestas con banca para medir el riesgo.') : `
+        ${concl(`<b>1 · Cuánto arriesgas.</b> Cada apuesta es de media un <b class="${avgSt > 0.05 ? 'neg' : avgSt > 0.02 ? 'yellow' : 'pos'}">${pctS(avgSt, 1)}</b> de tu banca (la mayor, ${pctS(rk.stake.max, 1)}). ${avgSt > 0.05 ? 'Es alto: lo habitual en profesionales es el 1–3 %.' : avgSt > 0.02 ? 'Es un nivel moderado, aceptable si tienes ventaja real.' : 'Es un nivel prudente.'}`)}
+        ${sim ? concl(`<b>2 · Qué puede pasar.</b> Si sigues así, en ${sim.n} apuestas lo normal es acabar con el <b class="${cls(sim.p50 - 1)}">${pctS(sim.p50, 0)}</b> de tu banca de hoy. Con mala suerte (1 de cada 20 veces) con menos del <b class="neg">${pctS(sim.p5, 0)}</b>, y hay un <b class="${sim.pBelow50 > 0.1 ? 'neg' : ''}">${pctS(sim.pBelow50, 0)}</b> de probabilidad de perder la mitad.`) : concl('<b>2 · Qué puede pasar.</b> Hacen falta al menos 5 apuestas cerradas para simularlo.')}
+        ${concl(`<b>3 · Qué hacer.</b> ${avgSt > 0.05 && rk.exposure.bank > 0 ? `Baja el importe: entre el 1 % y el 3 % de tu banca son ${eur(rk.exposure.bank * 0.01)}–${eur(rk.exposure.bank * 0.03)} por apuesta. ` : ''}${rk.kelly.n && rk.kelly.noEdgeMoney > 0.3 ? `El ${pctS(rk.kelly.noEdgeMoney, 0)} de tu dinero fue a apuestas sin ventaja: apuesta solo cuando haya valor. ` : ''}${avgSt <= 0.05 && !(rk.kelly.n && rk.kelly.noEdgeMoney > 0.3) ? 'Mantén tus importes y vigila que no suban tras una mala racha.' : ''}`)}`}
       </div>
 
       <h2>TAMAÑO DE TUS APUESTAS · % DE LA BANCA</h2>
       <div class="card">
-        ${avgSt == null ? '<div class="muted">SIN DATOS</div>' : `${gauge(avgSt, 0.1, 0.02, 0.05)}
+        ${avgSt == null ? '<div class="muted">SIN DATOS</div>' : `${gauge(avgSt, 0.1, 0.02, 0.05, `Tu media: <b>${pctS(avgSt, 1)}</b> de la banca<br>Verde hasta el 2 % · amarillo hasta el 5 % · rojo por encima`)}
         <div class="muted" style="position:relative;height:16px;margin:4px 0 8px"><span style="position:absolute;left:0">0 %</span><span style="position:absolute;left:20%;transform:translateX(-50%)">2 %</span><span style="position:absolute;left:50%;transform:translateX(-50%)">5 %</span><span style="position:absolute;right:0">10 %+</span></div>
         ${kv('MEDIA', pctS(avgSt, 1))}${kv('MEDIANA', pctS(rk.stake.median, 1))}
         ${kv('LA MAYOR', `${pctS(rk.stake.max, 1)}${rk.stake.maxBet ? ` · ${esc(selText(rk.stake.maxBet))}` : ''}`)}
         ${kv('APUESTAS POR ENCIMA DEL 5 %', pctS(rk.stake.over5, 0))}
-        <div class="muted hint" style="margin-top:6px">Importe de cada apuesta dividido entre la banca (depósitos netos + bonos + beneficio) justo antes de apostar. Verde hasta el 2 %, amarillo hasta el 5 %, rojo por encima.</div>`}
+        <div class="muted hint" style="margin-top:6px"><b style="color:var(--text)">Qué significa:</b> cuánto de tu banca juegas en cada apuesta. Cuanto mayor es el %, más duele perder y más rápido te quedas sin banca. Verde hasta el 2 %, amarillo hasta el 5 %, rojo por encima.</div>`}
       </div>
+      <h2>CADA APUESTA SOBRE LA BANCA · ÚLTIMAS 60</h2>
+      <div class="card">${barChart(sizeItems, [{ v: 2, col: 'var(--pos)', label: '2 %' }, { v: 5, col: 'var(--yellow)', label: '5 %' }])}
+        <div class="muted hint" style="margin-top:6px">Pasa el dedo por las barras para ver cada apuesta. Las barras rojas son las que superan el 5 %.</div></div>
 
       <h2>EXPOSICIÓN AHORA</h2>
       <div class="card">
@@ -1381,6 +1424,9 @@
         ${kv('PENDIENTES', rk.exposure.n)}${kv('EN JUEGO', eur(rk.exposure.risk))}${kv('BANCA ACTUAL', eur(rk.exposure.bank))}
         ${kv('VALOR ESPERADO DE LAS PENDIENTES', rk.exposure.n ? `<span class="${cls(rk.exposure.ev)}">${seur(rk.exposure.ev)}</span>` : '—')}
       </div>
+      <h2>DINERO APOSTADO POR DÍA · ÚLTIMOS 30 DÍAS</h2>
+      <div class="card">${barChart(dayItems, [])}
+        <div class="muted hint" style="margin-top:6px"><b style="color:var(--text)">Qué significa:</b> cuánto dinero pones en juego cada día. Las barras rojas son días con más del 10 % de tu banca apostada, amarillas más del 5 %.</div></div>
 
       <h2>SOBREAPUESTA · ¿APUESTAS MÁS DE LO QUE DICE LA VENTAJA?</h2>
       <div class="card">
@@ -1392,8 +1438,8 @@
       <h2>SIMULACIÓN · ${sim ? sim.n : 100} APUESTAS COMO LAS TUYAS</h2>
       <div class="card">
         ${sim ? `${concl(`Se repiten ${sim.trials.toLocaleString('es-ES')} veces ${sim.n} apuestas sacadas de tu historial (mismos importes sobre la banca y cuotas; ganan con la probabilidad justa). Tu banca de hoy es el 100 %.`)}
-        <div class="rng"><i class="rngbar" style="left:${Math.max(0, Math.min(100, sim.p5 / Math.max(1.5, sim.p95) * 66)).toFixed(1)}%;width:${Math.max(2, (Math.min(sim.p95, Math.max(1.5, sim.p95)) - sim.p5) / Math.max(1.5, sim.p95) * 66).toFixed(1)}%"></i><u class="rngm" style="left:${(sim.p50 / Math.max(1.5, sim.p95) * 66).toFixed(1)}%"></u><s class="rng100" style="left:${(1 / Math.max(1.5, sim.p95) * 66).toFixed(1)}%"></s></div>
-        <div class="muted" style="display:flex;justify-content:space-between;margin:4px 0 8px"><span>PEOR (1 DE 20)</span><span>NORMAL</span><span>MEJOR (1 DE 20)</span></div>
+        ${fanChart(sim.fan)}
+        <div class="muted" style="margin:4px 0 8px;font-size:11px"><span style="color:var(--cyan)">━ NORMAL</span> · franja oscura: rango habitual (50 %) · franja clara: de mal a buen día (90 %) · <span style="color:var(--yellow)">┄ TU BANCA DE HOY</span></div>
         <table class="tbl"><tr><th></th><th>BANCA FINAL</th></tr>
           <tr><td class="neg">PESIMISTA · 5 %</td><td class="num">${pctS(sim.p5, 0)}</td></tr><tr><td>BAJO · 25 %</td><td class="num">${pctS(sim.p25, 0)}</td></tr>
           <tr><td><b>NORMAL · 50 %</b></td><td class="num"><b class="${cls(sim.p50 - 1)}">${pctS(sim.p50, 0)}</b></td></tr><tr><td>ALTO · 75 %</td><td class="num">${pctS(sim.p75, 0)}</td></tr>
@@ -1403,6 +1449,9 @@
         <div class="muted hint" style="margin-top:6px">Es una estimación, no una predicción: usa tus importes y cuotas pasadas, y la probabilidad justa. Si apuestas menos o con más ventaja, estas cifras mejoran.</div>` : '<div class="muted hint">Hacen falta al menos 5 apuestas cerradas simples con importe y cuota.</div>'}
       </div>
 
+      <h2>CAÍDA DESDE TU MÁXIMO</h2>
+      <div class="card">${lineChart(ddSeries, { id: 'dd', label: 'Caída desde el máximo', axis: v => pctS(v, 0), color: 'var(--neg)', area: false, tip: p => `${fdate(p.date)} · <b class="${p.value < -0.0001 ? 'neg' : 'pos'}">${pctS(p.value, 1)}</b> desde tu máximo<br>bankroll ${eur(p.bankv)} · máximo ${eur(p.peak)}` })}
+        <div class="muted hint" style="margin-top:6px"><b style="color:var(--text)">Qué significa:</b> en cada fecha, cuánto estabas por debajo de tu mejor momento. Llegar a 0 % es hacer un nuevo máximo; los valles son los baches y cuánto duraron.</div></div>
       <h2>CAÍDAS Y RACHAS ESPERABLES</h2>
       <div class="card">
         ${kv('PEOR CAÍDA (SOBRE LA BANCA)', rk.ddPct == null ? 'SIN CAÍDAS' : `<span class="neg">${pctS(rk.ddPct, 0)}</span> · ${seur(rk.dd.max)}`)}

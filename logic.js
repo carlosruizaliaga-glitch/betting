@@ -500,13 +500,16 @@
       .map(b => ({ f: Math.min(0.5, +b.stake / bb[b.id]), o: +b.odds, p: b.fair > 1 ? Math.min(0.98, 1 / b.fair) : Math.min(0.98, 1 / (b.odds * 1.05)) }));
     if (pool.length < 5) return null;
     const rnd = rng(o.seed), finals = [], dds = [];
+    const path = Array.from({ length: o.n + 1 }, () => new Float64Array(o.trials));
     for (let t = 0; t < o.trials; t++) {
       let m = 1, peak = 1, ddMax = 0;
+      path[0][t] = 1;
       for (let i = 0; i < o.n; i++) {
         const x = pool[Math.floor(rnd() * pool.length)];
         m *= rnd() < x.p ? 1 + x.f * (x.o - 1) : 1 - x.f;
         if (m > peak) peak = m;
         const d = 1 - m / peak; if (d > ddMax) ddMax = d;
+        path[i + 1][t] = m;
       }
       finals.push(m); dds.push(ddMax);
     }
@@ -514,7 +517,9 @@
     const q = pr => finals[Math.min(finals.length - 1, Math.floor(pr * finals.length))];
     const frac = fn => finals.filter(fn).length / finals.length;
     const ev = pool.reduce((a, x) => a + x.f * (x.p * x.o - 1), 0) / pool.length;
-    return { n: o.n, trials: o.trials, pool: pool.length, p5: q(0.05), p25: q(0.25), p50: q(0.5), p75: q(0.75), p95: q(0.95),
+    // Abanico: percentiles de la banca tras cada apuesta
+    const fan = path.map((arr, i) => { const v = Array.from(arr).sort((x, y) => x - y), g = pr => v[Math.min(v.length - 1, Math.floor(pr * v.length))]; return { i, p5: g(0.05), p25: g(0.25), p50: g(0.5), p75: g(0.75), p95: g(0.95) }; });
+    return { fan, n: o.n, trials: o.trials, pool: pool.length, p5: q(0.05), p25: q(0.25), p50: q(0.5), p75: q(0.75), p95: q(0.95),
       pBelow75: frac(x => x < 0.75), pBelow50: frac(x => x < 0.5), pAbove: frac(x => x > 1), pDD30: dds.filter(d => d >= 0.3).length / dds.length, evPerBet: ev };
   }
 
