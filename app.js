@@ -565,7 +565,7 @@
         ? `<span>${combo}RIESGO <b>${eur(L.risk(tmp))}</b> · POTENCIAL <b>${eur(L.potential(tmp))}</b>${edge}</span>${L.isClosed(tmp) ? `<b class="${cls(L.profit(tmp))}">${seur(L.profit(tmp))}</b>` : ''}`
         : `<span class="muted">${combo}PON CUOTA Y STAKE</span>`;
       // Sugerencia de importe (solo apuestas simples hechas desde un pick, que tienen cuota justa).
-      const sg = $('#sugg'), sug = b.fair && b.legs.length === 1 ? L.suggestStake(o, b.fair, avail, st.unit, st.kelly) : null;
+      const sg = $('#sugg'), sug = b.fair && b.legs.length === 1 ? L.suggestStake(o, fairAdj(b.fair), avail, st.unit, st.kelly) : null;
       if (!sug) { sg.style.display = 'none'; return; }
       sg.style.display = '';
       sg.innerHTML = sug.level
@@ -677,24 +677,42 @@
   // "Mis casas": si has marcado casas en Ajustes, la mejor cuota y el valor se calculan solo con ellas
   // (hace falta que el pick traiga el precio de cada casa; los antiguos se ven como siempre hasta la próxima búsqueda).
   const BOOK_LIST = ['Betfair Exch.', 'Matchbook', 'Marathonbet', '888sport', 'William Hill', 'Unibet', 'Betsson', '1xBet', 'NordicBet'];
+  // Ajuste por tu historial: tu CLV de selección medio (cuánto se mueve el mercado a tu favor tras apostar),
+  // reducido según la muestra (con 200 apuestas cuenta la mitad) y con tope de ±2 %. Se suma a la ventaja de cada cuota.
+  let selAdjCache = { v: 0, n: 0, raw: null, at: 0 };
+  function selAdj() {
+    if (Date.now() - selAdjCache.at < 5000) return selAdjCache;
+    const cp = L.clvParts(bets()), n = cp.n, raw = cp.sel;
+    const v = raw == null ? 0 : Math.max(-0.02, Math.min(0.02, raw * n / (n + 200)));
+    selAdjCache = { v, n, raw, at: Date.now() };
+    return selAdjCache;
+  }
+  // Ventaja esperada de una cuota: lo que pagas frente a la justa más tu acierto histórico al elegir.
+  const effEdge = (odd, fair) => (odd / fair) * (1 + selAdj().v) - 1;
+  const fairAdj = fair => fair / (1 + selAdj().v);
+  // Media de las casas normales para un resultado (con su margen): lo que suele pagar una casa como bet365.
+  const softOdds = (mk, o) => { const v = Object.values(mk.prices || {}).map(r => r[o]).filter(x => x > 1); return v.length ? v.reduce((a, x) => a + x, 0) / v.length : null; };
+
   const adjMk = (mk, mine, thr) => {
-    if (!mk || !mk.prices || !mine.length) return mk;
+    if (!mk || !mk.fair_odds) return mk;
     const best = {};
-    for (const book of mine) {
-      const row = mk.prices[book];
-      if (!row) continue;
-      for (const k of Object.keys(mk.fair_odds)) {
-        if (!(row[k] > 1)) continue;
-        const edge = row[k] / mk.fair_odds[k] - 1;
-        if (!best[k] || row[k] > best[k].odds) best[k] = { book, odds: row[k], edge };
+    if (mk.prices) {
+      for (const book of (mine && mine.length ? mine : Object.keys(mk.prices))) {
+        const row = mk.prices[book];
+        if (!row) continue;
+        for (const k of Object.keys(mk.fair_odds)) {
+          if (!(row[k] > 1)) continue;
+          if (!best[k] || row[k] > best[k].odds) best[k] = { book, odds: row[k], edge: effEdge(row[k], mk.fair_odds[k]) };
+        }
       }
-    }
+    } else if (mk.best) {
+      for (const k of Object.keys(mk.best)) best[k] = Object.assign({}, mk.best[k], { edge: effEdge(mk.best[k].odds, mk.fair_odds[k]) });
+    } else return mk;
     let v = null;
     for (const k of Object.keys(best)) if (best[k].edge * 100 >= thr && (!v || best[k].edge > best[v].edge)) v = k;
     return Object.assign({}, mk, { best, value_outcome: v });
   };
   const adjPick = (p, st) => {
-    if (!st.myBooks || !st.myBooks.length) return p;
     const q = adjMk(p, st.myBooks, st.threshold);
     q.totals = adjMk(p.totals, st.myBooks, st.threshold);
     if (p.extras) q.extras = Object.assign({}, p.extras, { btts: adjMk(p.extras.btts, st.myBooks, st.threshold), lines: (p.extras.lines || []).map(l => adjMk(l, st.myBooks, st.threshold)) });
@@ -718,7 +736,9 @@
   };
   const pickHasValue = p => valueList(p).length > 0;
   const pickScore = p => { const v = valueList(p); return v.length ? v[0].score : bestEdge(p) * 100 - 1000; };
-  const minB365 = (fair, thr) => Math.ceil(fair * (1 + thr / 100) * 100 - 1e-9) / 100;
+  // Cuota mínima para que haya valor (con tu umbral) y para no perder a la larga, ya con el ajuste por tu historial.
+  const minB365 = (fair, thr) => Math.ceil(fairAdj(fair) * (1 + thr / 100) * 100 - 1e-9) / 100;
+  const breakEven = fair => Math.ceil(fairAdj(fair) * 100 - 1e-9) / 100;
   // Cambio de probabilidad justa (en puntos) desde la primera captura del partido.
   const moveOf = (p, o) => p.first_fair_prob && p.first_fair_prob[o] != null && p.fair_prob[o] != null ? p.fair_prob[o] - p.first_fair_prob[o] : 0;
   const moveHtml = d => Math.abs(d) >= 0.01 ? ` <span class="${d > 0 ? 'cyan' : 'purple'}">${d > 0 ? '↑' : '↓'}${Math.round(Math.abs(d) * 100)}</span>` : '';
@@ -807,7 +827,9 @@
         <span class="o">${label}${isVal ? ' ⭐' : isFav ? ' ➜' : ''}</span>
         <b>${fnum(mk.fair_prob[o] * 100, 0)} %${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</b>
         <span>JUSTA ${odds(mk.fair_odds[o])}</span>
-        <span class="cyan">B365 ≥ ${odds(minB365(mk.fair_odds[o], thr))}</span>
+        <span class="cyan">VALOR ≥ ${odds(minB365(mk.fair_odds[o], thr))}</span>
+        <span class="muted">SIN PÉRDIDA ≥ ${odds(breakEven(mk.fair_odds[o]))}</span>
+        ${softOdds(mk, o) ? `<span class="muted">CASAS ~${odds(softOdds(mk, o))}</span>` : ''}
         ${mk.best ? `<span class="muted">${b ? esc(b.book) : '—'}</span>
         <span class="${b && b.edge > 0 ? 'pos' : 'muted'}">${b ? `${odds(b.odds)} (${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)` : ''}</span>` : ''}
       </button>`;
@@ -928,7 +950,12 @@
     </div>
     ${picksHelp ? `<div class="card hint" style="margin-top:8px"><b style="color:var(--text)">Cómo leer los picks</b><br>
       <b>≥</b> es la cuota mínima en bet365 para que haya valor. <b>↑↓</b> es el cambio de probabilidad desde la primera búsqueda: en «Valor» se ordena por ventaja más movimiento, así que si el mercado se mueve a tu favor, sube.<br>
-      Toca una casilla para apuntar y el partido para ver casas y cuotas. Los partidos empezados no se muestran.</div>` : ''}
+      Toca una casilla para apuntar y el partido para ver casas y cuotas. Los partidos empezados no se muestran.<br><br>
+      <b style="color:var(--text)">Qué es el CLV</b><br>
+      Compara el precio al que apostaste con el precio justo al cierre (justo antes de empezar el partido), que es la mejor estimación de la probabilidad real. Si el mercado se mueve a tu favor después de apostar, aciertas al elegir. Se separa en dos: <b>selección</b> (cuánto se movió el precio justo a tu favor, sin margen) y <b>precio pagado</b> (el margen de la casa).<br><br>
+      <b style="color:var(--text)">Cómo se ajustan estas cuotas</b><br>
+      ${selAdj().n ? `Tu CLV de selección es ${spct(selAdj().raw, 2)} en ${selAdj().n} apuestas. Como la muestra es pequeña, la app solo cuenta ${spct(selAdj().v, 2)}: la cuota mínima baja ese poco y el valor de cada cuota sube ese poco.` : 'Aún no hay apuestas con cierre: las cuotas mínimas son las justas sin ajuste.'}
+      <b>VALOR ≥</b> es la cuota con tu umbral; <b>SIN PÉRDIDA ≥</b>, la que no pierde a la larga; <b>CASAS ~</b>, lo que suelen pagar las casas normales.</div>` : ''}
     <div class="row" style="gap:8px;margin-top:8px">
       <div class="seg grow">${['value', 'all'].map(m => `<button data-pm="${m}" class="${picksMode === m ? 'on' : ''}">${m === 'value' ? `⭐ ${nVal}` : `TODOS ${filtered.length}`}</button>`).join('')}</div>
       <div class="seg" style="width:128px">${chip('sort', 'value', 'VALOR')}${chip('sort', 'time', 'HORA')}</div>
@@ -986,11 +1013,12 @@
         ckState[id] = { v: sel.value, odds: inp.value };
         const [market, o, pt] = sel.value.split('|'), mk = mkFor(p, market, pt || undefined), odd = pnum(inp.value);
         if (!mk || !(odd > 1)) { out.innerHTML = '<span class="muted">Escribe la cuota que ves en bet365.</span>'; return; }
-        const fair = mk.fair_odds[o], edge = odd / fair - 1, st = settings();
-        const sug = L.suggestStake(odd, fair, L.funds(bets(), moves()).total.available, st.unit, st.kelly);
+        const fair = mk.fair_odds[o], edge = effEdge(odd, fair), st = settings(), sa = selAdj();
+        const sug = L.suggestStake(odd, fairAdj(fair), L.funds(bets(), moves()).total.available, st.unit, st.kelly);
         const verdict = edge * 100 >= st.threshold ? ['pos', 'VALE LA PENA'] : edge >= 0 ? ['yellow', 'JUSTA'] : ['neg', 'CARA'];
         out.innerHTML = `<b class="${verdict[0]}">${verdict[1]} ${spct(edge, 1)}</b> <span class="muted">· justa ${odds(fair)}${sug && sug.level ? ` · nivel ${sug.level} (${eur(sug.stake)})` : ''}</span>
-          <button class="small" data-ckbet="1">APUNTAR</button>`;
+          <button class="small" data-ckbet="1">APUNTAR</button>
+          <div class="muted" style="margin-top:4px">Precio frente a la justa ${spct(odd / fair - 1, 1)}${sa.v ? ` · tu selección ${spct(sa.v, 2)}` : ''} = valor esperado ${spct(edge, 1)}</div>`;
         out.querySelector('[data-ckbet]').onclick = () => betFromPick(p, market, o, pt || undefined, odd);
       };
       sel.onchange = upd; inp.oninput = upd;
