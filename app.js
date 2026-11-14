@@ -1512,7 +1512,7 @@
         <div class="seg grow">${['7D', 'MES', 'AÑO', 'TOTAL'].map(p => `<button data-p="${p}" class="${p === statsPeriod ? 'on' : ''}">${p}</button>`).join('')}</div>
         <button class="fbtn" id="statsF" aria-label="Filtros">${icon('filter', 18)}${act.length ? `<span>${act.length}</span>` : ''}</button></div>
       ${act.length ? `<div class="chips scroll-x" style="margin-top:8px">${act.map(([k, txt]) => `<button class="on" data-sfx="${k}">${esc(txt)} <i>×</i></button>`).join('')}</div>` : ''}
-      <div class="tabs2 scroll-x">${tabs.map(([k, tt]) => `<button data-stab="${k}" class="${statsTab === k ? 'on' : ''}">${tt}</button>`).join('')}</div>
+      <div class="tabs2">${tabs.map(([k, tt]) => `<button data-stab="${k}" class="${statsTab === k ? 'on' : ''}">${tt}</button>`).join('')}</div>
       ${{ res: secRes, rend: secRend, risk: secRisk, fav: secFav, clv: secClv, disc: secDisc, det: secDet }[statsTab]}`;
 
     view.querySelectorAll('[data-stab]').forEach(el => el.onclick = () => { statsTab = el.dataset.stab; render(); window.scrollTo(0, 0); });
