@@ -419,8 +419,8 @@
   function lineChart(series, opts) {
     if (series.length < 2) return '<div class="empty">AÚN NO HAY DATOS SUFICIENTES</div>';
     const refs = opts.refs || [];
-    const proj = opts.proj || [], px = proj.length ? 60 : 0;
-    const W = 600, H = 176, pl = 4, pr = proj.length ? 46 : 70, pt = 10, pb = 26;
+    const proj = opts.proj || [], px = proj.length ? 26 : 0;
+    const W = 600, H = 176, pl = 4, pr = proj.length ? 44 : 70, pt = 10, pb = 26;
     const vals = series.map(p => p.value).concat(refs.map(r => r.v), proj.map(r => r.v));
     const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
     const x = i => pl + (W - pl - pr - px) * i / (series.length - 1);
