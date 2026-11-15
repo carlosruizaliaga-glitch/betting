@@ -4,7 +4,7 @@
 
   const DEFAULT_SETTINGS = {
     id: 'settings', books: ['bet365'], sports: ['⚽'], types: ['1X2', 'Combinada'], tipsters: ['Carlos'], leagues: [],
-    unit: 1, kelly: 0.25, myBooks: [], clvMode: 'sel', lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: [], autoSend: { on: false, time: '10:00' }
+    unit: 1, kelly: 0.25, myBooks: [], clvMode: 'sel', theme: 'auto', fontSize: 'm', lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: [], autoSend: { on: false, time: '10:00' }
   };
 
   // ---------- Acceso a datos ----------
@@ -206,6 +206,20 @@
     dot.className = 'dot ' + c; txt.textContent = t;
   }
 
+  // Apariencia: tema (auto / oscuro / claro) y tamaño de letra (pequeño / normal / grande)
+  const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function applyLook() {
+    const st = settings(), th = st.theme === 'light' ? 'light' : st.theme === 'dark' ? 'dark' : (darkQuery && !darkQuery.matches ? 'light' : 'dark');
+    const root = document.documentElement;
+    if (root.dataset.theme !== th) {
+      root.dataset.theme = th;
+      const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', th === 'light' ? '#f2f6f5' : '#0a1214');
+    }
+    const z = { s: '0.92', l: '1.1' }[st.fontSize] || '1';
+    if (root.style.zoom !== z) root.style.zoom = z === '1' ? '' : z;
+  }
+  if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', () => applyLook());
+
   let lastVersion = -1;
   S.onChange(() => {
     renderHeader();
@@ -216,6 +230,7 @@
   function render() {
     lastVersion = S.version();
     L.setClvMode(settings().clvMode);
+    applyLook();
     if (!S.loggedIn()) { document.body.classList.add('noapp'); return renderLogin(); }
     document.body.classList.remove('noapp');
     renderHeader();
@@ -954,6 +969,15 @@
   }
 
   // Detalle de un partido, por mercados con su título (resultado, doble oportunidad, goles…).
+  // Tus apuestas en este partido: importe de cada una y qué parte de la banca era (barras con datos al tocar).
+  function betsHere(list) {
+    if (!list || !list.length) return '';
+    const bb = L.bankBefore(bets(), moves());
+    const items = list.slice().sort(L.byTime).map(b => { const f = bb[b.id] > 0 ? b.stake / bb[b.id] : null; return { label: b.type || 'Apuesta', v: +b.stake || 0, val: `${eur(b.stake)}${f != null ? ' · ' + pct(f, 1) : ''}`, col: 'var(--cyan)', cls: '',
+      tip: `<b>${esc(selText(b))}</b><br>@${odds(b.odds)} · ${eur(b.stake)}${f != null ? ` · ${pct(f, 1)} de la banca` : ''}<br>${L.isClosed(b) ? `Resultado <b class="${cls(L.profit(b))}">${seur(L.profit(b))}</b>` : 'Pendiente'}` }; });
+    const tot = list.reduce((a, b) => a + (+b.stake || 0), 0);
+    return `<div class="pksec">TUS APUESTAS EN ESTE PARTIDO · ${eur(tot)}</div>${hBars(items)}`;
+  }
   function pickDetail(p, thr) {
     const sec = (title, html) => `<div class="pksec">${title}</div>${html}`;
     const d = deriveMk(p.fair_prob), soccer = sportOf(p.sport_key) === 'soccer';
@@ -1147,7 +1171,7 @@
         <button class="primary grow" id="scanSend" style="padding:13px 6px" ${picksBusy ? 'disabled' : ''}>${picksBusy ? '…' : '🔥 PICKS → TELEGRAM'}</button>
         <button id="scanOnly" style="padding:13px 10px" ${picksBusy ? 'disabled' : ''}>BUSCAR</button></div>
       <button class="block" id="askClaude" style="margin-top:6px">✦ ANALIZAR CON CLAUDE</button>
-      <div style="text-align:center;margin-top:4px"><button class="linkbtn" id="chgProject" style="background:none;border:0;color:var(--muted);font-size:11px;letter-spacing:.08em;padding:4px">${settings().claudeProject ? 'CAMBIAR PROYECTO DE CLAUDE' : ''}</button></div>
+      ${settings().claudeProject ? '<div style="text-align:center;margin-top:4px"><button class="linkbtn" id="chgProject" style="background:none;border:0;color:var(--muted);font-size:11px;letter-spacing:.08em;padding:4px">CAMBIAR PROYECTO DE CLAUDE</button></div>' : ''}
       ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
     </div>
     ${comboPanel()}
@@ -1164,6 +1188,7 @@
       <div class="seg" style="width:128px">${chip('sort', 'value', 'VALOR')}${chip('sort', 'time', 'HORA')}</div>
     </div>
     <div class="seg" style="margin-top:8px">${[['', `TODOS ${preFiltered.length}`], ['no', `SIN APOSTAR ${nNoBet}`], ['yes', `APOSTADOS ${nBet}`]].map(([k, t]) => chip('bet', k, t)).join('')}</div>
+    <button class="block" data-pkpreset style="margin-top:8px;padding:10px">${picksMode === 'value' && pv.bet === 'no' ? '✓ SIN APOSTAR CON VALOR · TOCA PARA VER TODO' : '⭐ VER SOLO SIN APOSTAR CON VALOR'}</button>
     <div class="chips scroll-x pkfilters" style="margin-top:8px">
       ${sports.length > 1 ? chip('sport', '', 'TODOS') + sports.map(s => chip('sport', s, SPORT_EMOJI[s] || '🏆')).join('') + '<span class="sep"></span>' : ''}
       ${chip('day', '', 'CUALQUIER DÍA')}${chip('day', today, 'HOY')}${chip('day', tomorrow, 'MAÑANA')}${chip('day', 'later', 'DESPUÉS')}
@@ -1187,13 +1212,15 @@
           ${ve != null ? `<span class="tag P pktag" title="${esc(vl[0].label)}">⭐ ${esc(vl[0].label.length > 12 ? vl[0].label.slice(0, 11) + '…' : vl[0].label)} +${fnum(ve * 100, 0)}%${Math.abs(vl[0].move) >= 0.02 ? (vl[0].move > 0 ? ' ↑' : ' ↓') + Math.round(Math.abs(vl[0].move) * 100) : ''}</span>` : ''}
           <span class="muted">${open ? '▲' : '▼'}</span>
         </div>
-        ${open ? pickDetail(p, st.threshold) +
+        ${open ? betsHere(my) + pickDetail(p, st.threshold) +
           `<div class="muted" style="margin-top:6px">PRECIO JUSTO: ${(p.fair_src || ['pinnacle']).map(s => s === 'betfair' ? 'BETFAIR' : 'PINNACLE').join(' + ')} · CAPTURA ${new Date(p.captured_at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}${my.length ? ' · TUS APUESTAS: ' + my.map(b => esc(selText(b)) + ' @' + odds(b.odds)).join(', ') : ''}</div>`
           : pickCells(p, p, 'h2h', st.threshold, true) + (p.totals ? pickCells(p, p.totals, 'totals', st.threshold, true) : '')}
       </div>`;
     });
     view.innerHTML = html;
     view.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { picksMode = b.dataset.pm; render(); });
+    const pre = view.querySelector('[data-pkpreset]');
+    if (pre) pre.onclick = () => { if (picksMode === 'value' && pv.bet === 'no') { picksMode = 'all'; pv.bet = ''; } else { picksMode = 'value'; pv.bet = 'no'; } savePv(); render(); };
     view.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => { pv[b.dataset.pf] = b.dataset.v; savePv(); render(); });
     const lg = view.querySelector('#pfLeague'); if (lg) lg.onchange = ev => { pv.league = ev.target.value; savePv(); render(); };
     view.querySelector('#pkHelp').onclick = () => { picksHelp = !picksHelp; render(); };
@@ -1869,6 +1896,7 @@
         </div>
         <h2>SISTEMA</h2>
         <div class="mlist">
+          ${item('look', icon('sliders'), 'APARIENCIA', `TEMA ${({ auto: 'AUTOMÁTICO', dark: 'OSCURO', light: 'CLARO' })[st.theme || 'auto']} · LETRA ${({ s: 'PEQUEÑA', m: 'NORMAL', l: 'GRANDE' })[st.fontSize || 'm']}`)}
           ${item('conn', icon('plug'), 'CONEXIÓN', 'THE ODDS API Y TELEGRAM')}
           ${item('data', icon('save'), 'COPIA DE SEGURIDAD', 'EXCEL, COPIA COMPLETA E IMPORTAR')}
         </div>
@@ -1934,10 +1962,17 @@
       ${Object.keys(LISTS).map(k => `<div class="card listedit"><label style="margin-top:0">${LISTS[k]}</label>
         <div class="chips">${(st[k] || []).map((v, i) => `<button data-list="${k}" data-i="${i}">${esc(v)}<i>×</i></button>`).join('') || '<span class="muted">VACÍA</span>'}</div>
         <div class="row" style="margin-top:8px"><input data-new="${k}" placeholder="Añadir…" autocomplete="off"><button class="small" data-add="${k}">AÑADIR</button></div></div>`).join('')}`)}
+      ${page('look', `
+      <h2>TEMA</h2>
+      <div class="card"><div class="seg">${[['auto', 'AUTOMÁTICO'], ['dark', 'OSCURO'], ['light', 'CLARO']].map(([k, t]) => `<button data-look="theme:${k}" class="${(st.theme || 'auto') === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+        <div class="muted hint" style="margin-top:8px">Automático sigue el modo del móvil. El claro se lee mejor con mucha luz.</div></div>
+      <h2>TAMAÑO DE LETRA</h2>
+      <div class="card"><div class="seg">${[['s', 'PEQUEÑA'], ['m', 'NORMAL'], ['l', 'GRANDE']].map(([k, t]) => `<button data-look="fontSize:${k}" class="${(st.fontSize || 'm') === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+        <div class="muted hint" style="margin-top:8px">Cambia el tamaño de toda la app a la vez.</div></div>`)}
       ${page('conn', `
       <h2>CONEXIÓN · THE ODDS API Y TELEGRAM</h2>
       <div class="card"><div id="conn" class="muted">PULSA COMPROBAR PARA VER EL ESTADO.</div>
-        <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button><button class="small" id="chkFb">COMPROBAR FÚTBOL</button></div>
+        <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button><button class="small" id="chkFb">COMPROBAR FÚTBOL</button></div>
         <label>PROYECTO DE CLAUDE (ENLACE) · PARA ✦ ANALIZAR CON CLAUDE</label>
         <input id="claudeProj" placeholder="https://claude.ai/project/…" value="${esc(st.claudeProject || '')}">
         <div class="muted hint" style="margin-top:8px">Fútbol = API-Football: da córners, tarjetas y goles con minuto para la ficha de cada apuesta.</div></div>`)}
@@ -2009,6 +2044,7 @@
     view.querySelector('#chk').onclick = checkConnection;
     view.querySelector('#chat').onclick = detectChat;
     view.querySelector('#chkFb').onclick = checkFootball;
+    view.querySelectorAll('[data-look]').forEach(b => b.onclick = () => { const [k, v] = b.dataset.look.split(':'); saveSettings({ [k]: v }); });
     view.querySelector('#claudeProj').onchange = ev => { const v = ev.target.value.trim(); if (v === '' || /^https:\/\/claude\.ai\/project\//.test(v)) { saveSettings({ claudeProject: v.split('?')[0] }); toast('GUARDADO'); } else { toast('Debe empezar por https://claude.ai/project/'); render(); } };
     view.querySelector('#toCash').onclick = () => go('cash');
     view.querySelector('#csvBets').onclick = exportBetsCsv;
