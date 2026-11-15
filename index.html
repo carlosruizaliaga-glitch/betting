@@ -25,7 +25,7 @@
       --line: #1c2a2c; --line2: #152224;
       --pos: #43e8c0; --pos-soft: rgba(67, 232, 192, .13); --money: #43e8c0; --money-dark: #0f3a33;
       --neg: #ff6b6b; --neg-soft: rgba(255, 107, 107, .13);
-      --cyan: #c4b5fd; --cyan-soft: rgba(196, 181, 253, .13);
+      --cyan: #eef4f2; --cyan-soft: rgba(238, 244, 242, .09);
       --yellow: #ffd36e; --yellow-soft: rgba(255, 211, 110, .13);
       --purple: #b9a4e0; --purple-soft: rgba(185, 164, 224, .14);
       --r: 16px; --r-sm: 12px; --r-xs: 9px;
@@ -39,7 +39,7 @@
       --line: #d3dddb; --line2: #e2eae8;
       --pos: #0a8f6f; --pos-soft: rgba(10, 143, 111, .12); --money: #0a8f6f; --money-dark: #d6efe8;
       --neg: #d23f3f; --neg-soft: rgba(210, 63, 63, .1);
-      --cyan: #6a4bd6; --cyan-soft: rgba(106, 75, 214, .1);
+      --cyan: #1b2a29; --cyan-soft: rgba(27, 42, 41, .07);
       --yellow: #9a6500; --yellow-soft: rgba(212, 150, 0, .14);
       --purple: #7452c0; --purple-soft: rgba(116, 82, 192, .12);
       --shadow: 0 1px 2px rgba(20, 32, 31, .08), 0 6px 16px rgba(20, 32, 31, .08);
@@ -50,7 +50,7 @@
     :root[data-theme="light"] .sheet::before { background: rgba(20, 32, 31, .18); }
     :root[data-theme="light"] input[type=date], :root[data-theme="light"] input[type=time] { color-scheme: light; }
     :root[data-theme="light"] .overlay { background: rgba(20, 32, 31, .4); }
-    :root[data-theme="light"] .pk.val, :root[data-theme="light"] .pkc.val { background: var(--yellow-soft); }
+    :root[data-theme="light"] .pk.val, :root[data-theme="light"] .pkc.val { background: var(--pos-soft); border-color: rgba(10, 143, 111, .55); }
     :root[data-theme="light"] nav.tabs { background: rgba(255, 255, 255, .92); }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
@@ -206,8 +206,8 @@
     .pk .o { font: 600 11.5px/1.3 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
     .pk b { font-size: 16px; font-weight: 700; }
     .pk span { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-    .pk.fav { border-color: rgba(196, 181, 253, .55); } .pk.fav .o { color: var(--cyan); }
-    .pk.val { border-color: rgba(255, 211, 110, .55); background: var(--yellow-soft); } .pk.val .o { color: var(--yellow); }
+    .pk.fav { border-color: rgba(238, 244, 242, .5); } .pk.fav .o { color: var(--cyan); }
+    .pk.val { border-color: rgba(67, 232, 192, .6); background: var(--pos-soft); } .pk.val .o { color: var(--pos); }
     /* Fichas de mercado más claras: letra sans, colores por probabilidad y por valor */
     .pk { align-items: stretch; padding: 8px 7px 7px; gap: 2px; text-align: left; }
     .pk .o { font: 600 11px/1.3 var(--sans); letter-spacing: 0; text-align: center; }
@@ -219,6 +219,7 @@
     .pk .kr b { font: 700 12.5px/1.35 var(--sans); font-variant-numeric: tabular-nums; }
     .pickrow.c3 .pk .kr { flex-direction: column; align-items: flex-start; gap: 0; padding: 2px 0; }
     .pickrow.c3 .pk .kr em { font-size: 10px; }
+    .pk .kr b.cyan, .ccg .cc span.v.cyan, .pkc span.cyan { background: var(--cyan-soft); border-radius: 6px; padding: 0 6px; }
     .bg-pos { background: var(--pos); } .bg-yellow { background: var(--yellow); } .bg-neg { background: var(--neg); }
     .srcs td { font: 700 13.5px var(--sans); font-variant-numeric: tabular-nums; }
     .srcs td:first-child { font: 500 11.5px var(--sans); }
@@ -226,9 +227,9 @@
     .ccg { display: grid; grid-template-columns: 52px 1fr 1fr; gap: 6px; align-items: stretch; margin-top: 6px; }
     .ccg .ch { font: 600 11px var(--sans); color: var(--muted); text-align: center; padding: 2px 0; }
     .ccg .ccl { display: flex; flex-direction: column; justify-content: center; align-items: center; font: 800 15px var(--sans); font-variant-numeric: tabular-nums; }
-    .ccg .ccl small { font: 600 8.5px var(--sans); letter-spacing: .06em; color: var(--yellow); margin-top: 2px; }
+    .ccg .ccl small { font: 700 8.5px var(--sans); letter-spacing: .06em; color: var(--text); margin-top: 2px; }
     .ccg .cc { background: var(--card2); border-radius: 10px; padding: 6px 5px 5px; text-align: center; }
-    .ccg .cc.main { background: var(--yellow-soft); }
+    .ccg .cc.main { background: var(--raise); box-shadow: inset 0 0 0 1.5px var(--muted); }
     .ccg .cc b { display: block; font: 800 16px/1.15 var(--sans); font-variant-numeric: tabular-nums; }
     .ccg .cc .bar { height: 4px; border-radius: 2px; background: var(--line2); margin: 4px 4px 5px; overflow: hidden; }
     .ccg .cc .bar i { display: block; height: 100%; }
@@ -337,8 +338,8 @@
     .pkc .o { font: 600 11px/1.3 var(--sans); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
     .pkc b { font: 800 17px/1.2 var(--sans); }
     .pkc span.cyan { font: 700 12px/1.3 var(--sans); }
-    .pkc.fav { border-color: rgba(196, 181, 253, .55); } .pkc.fav .o { color: var(--cyan); }
-    .pkc.val { border-color: rgba(255, 211, 110, .55); background: var(--yellow-soft); } .pkc.val .o { color: var(--yellow); }
+    .pkc.fav { border-color: rgba(238, 244, 242, .5); } .pkc.fav .o { color: var(--cyan); }
+    .pkc.val { border-color: rgba(67, 232, 192, .6); background: var(--pos-soft); } .pkc.val .o { color: var(--pos); }
     .pkfilters { margin-top: 8px; }
     #pfLeague { font-size: 13px; padding: 9px 10px; }
     .pkfilters button { font-size: 12px; padding: 7px 11px; }
@@ -363,9 +364,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=88"></script>
-  <script src="logic.js?v=88"></script>
-  <script src="store.js?v=88"></script>
-  <script src="app.js?v=88"></script>
+  <script src="version.js?v=90"></script>
+  <script src="logic.js?v=90"></script>
+  <script src="store.js?v=90"></script>
+  <script src="app.js?v=90"></script>
 </body>
 </html>
