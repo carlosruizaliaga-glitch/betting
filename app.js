@@ -213,7 +213,7 @@
     const root = document.documentElement;
     if (root.dataset.theme !== th) {
       root.dataset.theme = th;
-      const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', th === 'light' ? '#f2f6f5' : '#0a1214');
+      const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', th === 'light' ? '#f2f6f5' : '#0f1e20');
     }
     const z = { s: '0.92', l: '1.1' }[st.fontSize] || '1';
     if (root.style.zoom !== z) root.style.zoom = z === '1' ? '' : z;
@@ -231,6 +231,7 @@
     lastVersion = S.version();
     L.setClvMode(settings().clvMode);
     applyLook();
+    document.documentElement.dataset.tab = tab;
     if (!S.loggedIn()) { document.body.classList.add('noapp'); return renderLogin(); }
     document.body.classList.remove('noapp');
     renderHeader();
