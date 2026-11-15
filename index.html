@@ -59,7 +59,7 @@
     .muted { color: var(--muted); font-size: 12.5px; }
     .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pos { color: var(--pos); } .neg { color: var(--neg); } .cyan { color: var(--cyan); } .yellow { color: var(--yellow); } .purple { color: var(--purple); }
-    .num, .big, .kpis .v, .tbl td, .tag, .pk b, .pkc b, .levels button b { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .num, .big, .kpis .v, .tbl td, .tag, .levels button b { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     .num { white-space: nowrap; }
     b, strong { font-weight: 600; }
     .hero { padding: 18px 16px 14px; }
@@ -182,31 +182,31 @@
     .pk.fav { border-color: rgba(122, 217, 245, .55); } .pk.fav .o { color: var(--cyan); }
     .pk.val { border-color: rgba(255, 211, 110, .55); background: var(--yellow-soft); } .pk.val .o { color: var(--yellow); }
     /* Fichas de mercado más claras: letra sans, colores por probabilidad y por valor */
-    .pk { align-items: stretch; padding: 11px 10px 10px; gap: 3px; text-align: left; }
-    .pk .o { font: 600 12.5px/1.3 var(--sans); letter-spacing: 0; text-align: center; }
-    .pk .pkp { display: block; text-align: center; font: 800 26px/1.15 var(--sans); font-variant-numeric: tabular-nums; overflow: visible; }
-    .pk .pkb { height: 5px; border-radius: 3px; background: var(--line2); overflow: hidden; margin: 3px 0 7px; }
+    .pk { align-items: stretch; padding: 8px 7px 7px; gap: 2px; text-align: left; }
+    .pk .o { font: 600 11px/1.3 var(--sans); letter-spacing: 0; text-align: center; }
+    .pk .pkp { display: block; text-align: center; font: 800 20px/1.15 var(--sans); font-variant-numeric: tabular-nums; overflow: visible; }
+    .pk .pkb { height: 4px; border-radius: 2px; background: var(--line2); overflow: hidden; margin: 2px 0 5px; }
     .pk .pkb i { display: block; height: 100%; border-radius: 3px; }
-    .pk .kr { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 2px 0; }
-    .pk .kr em { font: normal 500 11.5px/1.4 var(--sans); color: var(--muted); }
-    .pk .kr b { font: 700 14px/1.4 var(--sans); font-variant-numeric: tabular-nums; }
-    .pickrow.c3 .pk .kr { flex-direction: column; align-items: flex-start; gap: 0; padding: 3px 0; }
-    .pickrow.c3 .pk .kr em { font-size: 10.5px; }
+    .pk .kr { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; padding: 1px 0; }
+    .pk .kr em { font: normal 500 10.5px/1.35 var(--sans); color: var(--muted); }
+    .pk .kr b { font: 700 12.5px/1.35 var(--sans); font-variant-numeric: tabular-nums; }
+    .pickrow.c3 .pk .kr { flex-direction: column; align-items: flex-start; gap: 0; padding: 2px 0; }
+    .pickrow.c3 .pk .kr em { font-size: 10px; }
     .bg-pos { background: var(--pos); } .bg-yellow { background: var(--yellow); } .bg-neg { background: var(--neg); }
-    .srcs td { font: 700 15px var(--sans); font-variant-numeric: tabular-nums; }
-    .srcs td:first-child { font: 500 12.5px var(--sans); }
+    .srcs td { font: 700 13.5px var(--sans); font-variant-numeric: tabular-nums; }
+    .srcs td:first-child { font: 500 11.5px var(--sans); }
     .srcs th { font: 600 11px var(--sans); letter-spacing: .02em; }
     .ccg { display: grid; grid-template-columns: 52px 1fr 1fr; gap: 6px; align-items: stretch; margin-top: 6px; }
     .ccg .ch { font: 600 11px var(--sans); color: var(--muted); text-align: center; padding: 2px 0; }
-    .ccg .ccl { display: flex; flex-direction: column; justify-content: center; align-items: center; font: 800 17px var(--sans); font-variant-numeric: tabular-nums; }
+    .ccg .ccl { display: flex; flex-direction: column; justify-content: center; align-items: center; font: 800 15px var(--sans); font-variant-numeric: tabular-nums; }
     .ccg .ccl small { font: 600 8.5px var(--sans); letter-spacing: .06em; color: var(--yellow); margin-top: 2px; }
-    .ccg .cc { background: var(--card2); border-radius: 12px; padding: 8px 6px 7px; text-align: center; }
+    .ccg .cc { background: var(--card2); border-radius: 10px; padding: 6px 5px 5px; text-align: center; }
     .ccg .cc.main { background: var(--yellow-soft); }
-    .ccg .cc b { display: block; font: 800 19px/1.15 var(--sans); font-variant-numeric: tabular-nums; }
+    .ccg .cc b { display: block; font: 800 16px/1.15 var(--sans); font-variant-numeric: tabular-nums; }
     .ccg .cc .bar { height: 4px; border-radius: 2px; background: var(--line2); margin: 4px 4px 5px; overflow: hidden; }
     .ccg .cc .bar i { display: block; height: 100%; }
-    .ccg .cc span { display: block; font: 500 12px/1.45 var(--sans); font-variant-numeric: tabular-nums; }
-    .ccg .cc span.v { font-weight: 700; font-size: 13.5px; }
+    .ccg .cc span { display: block; font: 500 11px/1.4 var(--sans); font-variant-numeric: tabular-nums; }
+    .ccg .cc span.v { font-weight: 700; font-size: 12px; }
     .lg { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line2); }
     .lg:last-of-type { border-bottom: 0; }
     .lg .chk { width: 30px; height: 30px; padding: 0; background: var(--card2); border-radius: 9px; font-weight: 800; }
@@ -306,10 +306,10 @@
     .pksec { font: 600 10px/1 var(--mono); letter-spacing: .1em; color: var(--muted); margin: 14px 2px 0; }
     .pktag { max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pkrow { display: grid; gap: 6px; margin-top: 8px; }
-    .pkc { background: var(--card2); border-radius: var(--r-xs); padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 0; font-weight: 400; letter-spacing: 0; min-width: 0; }
-    .pkc .o { font: 600 10px/1.3 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-    .pkc b { font-size: 14px; font-weight: 700; }
-    .pkc span.cyan { font: 500 11px/1.3 var(--mono); }
+    .pkc { background: var(--card2); border-radius: var(--r-xs); padding: 6px 2px 5px; display: flex; flex-direction: column; align-items: center; gap: 0; font-weight: 400; letter-spacing: 0; min-width: 0; }
+    .pkc .o { font: 600 11px/1.3 var(--sans); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .pkc b { font: 800 17px/1.2 var(--sans); }
+    .pkc span.cyan { font: 700 12px/1.3 var(--sans); }
     .pkc.fav { border-color: rgba(122, 217, 245, .55); } .pkc.fav .o { color: var(--cyan); }
     .pkc.val { border-color: rgba(255, 211, 110, .55); background: var(--yellow-soft); } .pkc.val .o { color: var(--yellow); }
     .pkfilters { margin-top: 8px; }
@@ -336,9 +336,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=80"></script>
-  <script src="logic.js?v=80"></script>
-  <script src="store.js?v=80"></script>
-  <script src="app.js?v=80"></script>
+  <script src="version.js?v=81"></script>
+  <script src="logic.js?v=81"></script>
+  <script src="store.js?v=81"></script>
+  <script src="app.js?v=81"></script>
 </body>
 </html>

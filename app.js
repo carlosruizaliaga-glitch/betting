@@ -936,7 +936,7 @@
       const label = cellLabel(p, market, o, pt);
       const attrs = `data-pick="${esc(p.id)}" data-o="${o}" data-m="${market}"${pt != null ? ` data-pt="${pt}"` : ''}`;
       if (compact) return `<button class="pkc${isFav ? ' fav' : ''}${isVal ? ' val' : ''}" ${attrs}>
-        <span class="o">${label}${isVal ? ' ⭐' : ''}</span><b>${fnum(mk.fair_prob[o] * 100, 0)}%${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</b>
+        <span class="o">${label}${isVal ? ' ⭐' : ''}</span><b class="${mk.fair_prob[o] >= 0.6 ? 'pos' : mk.fair_prob[o] >= 0.35 ? 'yellow' : 'neg'}">${fnum(mk.fair_prob[o] * 100, 0)}%${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</b>
         <span class="cyan">≥ ${odds(minB365(mk.fair_odds[o], thr))}</span></button>`;
       const pr = mk.fair_prob[o] * 100, pcl = pr >= 60 ? 'pos' : pr >= 35 ? 'yellow' : 'neg', so = softOdds(mk, o), se = so ? so / mk.fair_odds[o] - 1 : null;
       const ecl = e => e >= 0 ? 'pos' : e > -0.05 ? 'yellow' : 'neg';
