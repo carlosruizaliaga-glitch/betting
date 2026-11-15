@@ -231,7 +231,6 @@
     lastVersion = S.version();
     L.setClvMode(settings().clvMode);
     applyLook();
-    document.documentElement.dataset.tab = tab;
     if (!S.loggedIn()) { document.body.classList.add('noapp'); return renderLogin(); }
     document.body.classList.remove('noapp');
     renderHeader();
@@ -960,9 +959,9 @@
         <span class="o">${label}${isVal ? ' ⭐' : isFav ? ' ➜' : ''}</span>
         <span class="pkp ${pcl}">${fnum(pr, 0)}%${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</span>
         <div class="pkb"><i class="bg-${pcl}" style="width:${Math.max(3, Math.min(100, pr)).toFixed(0)}%"></i></div>
-        <div class="kr"><em>Justa</em><b>${odds(mk.fair_odds[o])}</b></div>
+        <div class="kr"><em>Justa</em><b class="jus">${odds(mk.fair_odds[o])}</b></div>
         <div class="kr"><em>Valor ≥</em><b class="cyan">${odds(minB365(mk.fair_odds[o], thr))}</b></div>
-        <div class="kr"><em>Sin pérdida ≥</em><b class="muted">${odds(breakEven(mk.fair_odds[o]))}</b></div>
+        <div class="kr"><em>Sin pérdida ≥</em><b class="faint">${odds(breakEven(mk.fair_odds[o]))}</b></div>
         ${so ? `<div class="kr"><em>Casas ~</em><b class="${ecl(se)}">${odds(so)}</b></div>` : ''}
         ${mk.best ? `<div class="kr"><em>${b ? esc(b.book) : 'Mejor cuota'}</em><b class="${b ? ecl(b.edge) : 'muted'}">${b ? `${odds(b.odds)} <small>(${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)</small>` : '—'}</b></div>` : ''}
       </button>`;

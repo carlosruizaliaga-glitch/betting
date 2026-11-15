@@ -25,31 +25,23 @@
       --line: #2a4447; --line2: #1f373a;
       --pos: #43e8c0; --pos-soft: rgba(67, 232, 192, .13); --money: #43e8c0; --money-dark: #0f3a33;
       --neg: #ff6b6b; --neg-soft: rgba(255, 107, 107, .13);
-      --cyan: #eef4f2; --cyan-soft: rgba(238, 244, 242, .09);
+      --cyan: #43e8c0; --cyan-soft: rgba(67, 232, 192, .13);
       --yellow: #ffd36e; --yellow-soft: rgba(255, 211, 110, .13);
       --purple: #b9a4e0; --purple-soft: rgba(185, 164, 224, .14);
       --r: 16px; --r-sm: 12px; --r-xs: 9px;
       --mono: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;   /* una sola letra en toda la app */
       --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       --shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 8px 22px rgba(0, 0, 0, .35);
-      --ac: #43e8c0;                       /* color de cada sección: Inicio verde, Apuestas naranja, Picks rosa, Stats lima, Ajustes arena */
+      --ac: #43e8c0;                       /* único color de acento */
     }
-    :root[data-tab="bets"] { --ac: #ffa24d; }
-    :root[data-tab="picks"] { --ac: #ff8fbf; }
-    :root[data-tab="stats"] { --ac: #a8e063; }
-    :root[data-tab="settings"], :root[data-tab="cash"] { --ac: #e6c98a; }
     :root[data-theme="light"] { --ac: #0a8f6f; }
-    :root[data-theme="light"][data-tab="bets"] { --ac: #c46500; }
-    :root[data-theme="light"][data-tab="picks"] { --ac: #d1337d; }
-    :root[data-theme="light"][data-tab="stats"] { --ac: #4f8a10; }
-    :root[data-theme="light"][data-tab="settings"], :root[data-theme="light"][data-tab="cash"] { --ac: #94701a; }
     /* Modo claro (Ajustes → Apariencia): mismos colores de significado, más oscuros para leer sobre fondo claro */
     :root[data-theme="light"] {
       --bg: #f2f6f5; --card: #ffffff; --card2: #eef3f2; --raise: #e2e9e8; --text: #14201f; --muted: #566a68; --faint: #7d908e;
       --line: #d3dddb; --line2: #e2eae8;
       --pos: #0a8f6f; --pos-soft: rgba(10, 143, 111, .12); --money: #0a8f6f; --money-dark: #d6efe8;
       --neg: #d23f3f; --neg-soft: rgba(210, 63, 63, .1);
-      --cyan: #1b2a29; --cyan-soft: rgba(27, 42, 41, .07);
+      --cyan: #0a8f6f; --cyan-soft: rgba(10, 143, 111, .12);
       --yellow: #9a6500; --yellow-soft: rgba(212, 150, 0, .14);
       --purple: #7452c0; --purple-soft: rgba(116, 82, 192, .12);
       --shadow: 0 1px 2px rgba(20, 32, 31, .08), 0 6px 16px rgba(20, 32, 31, .08);
@@ -65,7 +57,7 @@
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
     body { padding-bottom: calc(150px + env(safe-area-inset-bottom));
-      background: radial-gradient(120% 55% at 50% -10%, color-mix(in srgb, var(--ac) 11%, transparent) 0%, transparent 60%) fixed, var(--bg); }
+      background: radial-gradient(120% 55% at 50% -10%, color-mix(in srgb, var(--ac) 7%, transparent) 0%, transparent 60%) fixed, var(--bg); }
     header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--line2); padding: calc(10px + env(safe-area-inset-top)) 16px 10px; display: flex; align-items: center; gap: 10px; }
     header img { width: 28px; height: 28px; border-radius: 8px; }
@@ -80,8 +72,8 @@
     .dot { width: 7px; height: 7px; display: inline-block; border-radius: 50%; background: var(--faint); }
     .dot.ok { background: var(--pos); box-shadow: 0 0 8px var(--pos); } .dot.warn { background: var(--yellow); } .dot.err { background: var(--neg); }
     main { padding: 4px 16px 24px; max-width: 680px; margin: 0 auto; }
-    .card { background: linear-gradient(180deg, var(--card) 0%, var(--card2) 100%); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; margin: 12px 0; box-shadow: inset 0 2px 0 color-mix(in srgb, var(--ac) 45%, transparent), var(--shadow); }
-    h2 { font: 700 11.5px/1 var(--mono); letter-spacing: .14em; color: color-mix(in srgb, var(--ac) 72%, var(--muted)); margin: 22px 2px 8px; }
+    .card { background: linear-gradient(180deg, var(--card) 0%, var(--card2) 100%); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; margin: 12px 0; box-shadow: var(--shadow); }
+    h2 { font: 600 11.5px/1 var(--mono); letter-spacing: .14em; color: var(--muted); margin: 22px 2px 8px; }
     h2 .acc { color: var(--cyan); }
     .row { display: flex; align-items: center; gap: 10px; }
     .grow { flex: 1; min-width: 0; }
@@ -216,7 +208,7 @@
     .pk .o { font: 600 11.5px/1.3 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
     .pk b { font-size: 16px; font-weight: 700; }
     .pk span { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-    .pk.fav { border-color: rgba(238, 244, 242, .5); } .pk.fav .o { color: var(--cyan); }
+    .pk.fav { border-color: rgba(67, 232, 192, .5); } .pk.fav .o { color: var(--cyan); }
     .pk.val { border-color: rgba(67, 232, 192, .6); background: var(--pos-soft); } .pk.val .o { color: var(--pos); }
     /* Fichas de mercado más claras: letra sans, colores por probabilidad y por valor */
     .pk { align-items: stretch; padding: 8px 7px 7px; gap: 2px; text-align: left; }
@@ -230,6 +222,9 @@
     .pickrow.c3 .pk .kr { flex-direction: column; align-items: flex-start; gap: 0; padding: 2px 0; }
     .pickrow.c3 .pk .kr em { font-size: 10px; }
     .pk .kr b.cyan, .ccg .cc span.v.cyan, .pkc span.cyan { background: var(--cyan-soft); border-radius: 6px; padding: 0 6px; }
+    .jus { color: var(--muted); }
+    .faint { color: var(--faint); }
+    .ccg .cc span:not(.v) { color: var(--muted); }
     .bg-pos { background: var(--pos); } .bg-yellow { background: var(--yellow); } .bg-neg { background: var(--neg); }
     .srcs td { font: 700 13.5px var(--sans); font-variant-numeric: tabular-nums; }
     .srcs td:first-child { font: 500 11.5px var(--sans); }
@@ -348,7 +343,7 @@
     .pkc .o { font: 600 11px/1.3 var(--sans); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
     .pkc b { font: 800 17px/1.2 var(--sans); }
     .pkc span.cyan { font: 700 12px/1.3 var(--sans); }
-    .pkc.fav { border-color: rgba(238, 244, 242, .5); } .pkc.fav .o { color: var(--cyan); }
+    .pkc.fav { border-color: rgba(67, 232, 192, .5); } .pkc.fav .o { color: var(--cyan); }
     .pkc.val { border-color: rgba(67, 232, 192, .6); background: var(--pos-soft); } .pkc.val .o { color: var(--pos); }
     .pkfilters { margin-top: 8px; }
     #pfLeague { font-size: 13px; padding: 9px 10px; }
@@ -374,9 +369,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=92"></script>
-  <script src="logic.js?v=92"></script>
-  <script src="store.js?v=92"></script>
-  <script src="app.js?v=92"></script>
+  <script src="version.js?v=93"></script>
+  <script src="logic.js?v=93"></script>
+  <script src="store.js?v=93"></script>
+  <script src="app.js?v=93"></script>
 </body>
 </html>
