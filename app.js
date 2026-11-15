@@ -318,7 +318,7 @@
         </div>
       </div>
       <h2>EVOLUCIÓN DEL BANKROLL</h2>
-      <div class="card">${bankChart(L.bankSeries(bs, ms), pend.length ? [{ v: L.r2(bank + pRisk + pMax), col: 'var(--pos)', label: mny(L.r2(bank + pRisk + pMax)) }].concat(pFair.length ? [{ v: L.r2(bank + pRisk + pEv), col: 'var(--muted)', label: mny(L.r2(bank + pRisk + pEv)) }] : []) : null)}</div>
+      <div class="card">${bankChart(L.bankSeries(bs, ms).concat([{ date: today(), value: bank, delta: -pRisk, live: true }]), pend.length ? [{ v: L.r2(bank + pRisk + pMax), col: 'var(--pos)', label: mny(L.r2(bank + pRisk + pMax)) }].concat(pFair.length ? [{ v: L.r2(bank + pRisk + pEv), col: 'var(--muted)', label: mny(L.r2(bank + pRisk + pEv)) }] : []) : null)}</div>
       <h2>PENDIENTES <span class="acc">${pend.length}</span></h2>
       ${pend.length ? pend.map(pendCard).join('') : '<div class="card empty">SIN APUESTAS PENDIENTES</div>'}
       <h2>RESUMEN</h2>
@@ -427,8 +427,11 @@
     const y = v => pt + (H - pt - pb) * (1 - (v - lo) / span);
     const pts = series.map((p, i) => ({ x: x(i), y: y(p.value), p }));
     charts[opts.id] = { pts, tip: opts.tip };
-    const d = pts.map((q, i) => (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' ');
-    const last = pts[pts.length - 1], col = opts.color;
+    const live = !!(series[series.length - 1] && series[series.length - 1].live), solid = live ? pts.slice(0, -1) : pts;
+    const d = solid.map((q, i) => (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' ');
+    const last = pts[pts.length - 1], col = opts.color, lastSolid = solid[solid.length - 1];
+    // Último paso "hoy": lo que está en juego sale del bankroll (trazo discontinuo y punto distinto)
+    const liveSvg = live && lastSolid ? `<line x1="${lastSolid.x.toFixed(1)}" y1="${lastSolid.y.toFixed(1)}" x2="${last.x.toFixed(1)}" y2="${last.y.toFixed(1)}" stroke="var(--yellow)" stroke-width="2" stroke-dasharray="3 3"/>` : '';
     const hline = (v, stroke, label, lcol) => `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="${stroke}" stroke-dasharray="3 4"/>
       <text x="${W - pr + 6}" y="${y(v) + 4}" fill="${lcol || 'var(--muted)'}" font-size="12" font-family="inherit">${label}</text>`;
     // Proyección: líneas punteadas muy sutiles desde el último punto hasta el posible bankroll si se cierran las pendientes
@@ -440,10 +443,11 @@
     return `<div class="chart" data-chart="${opts.id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label)}">
       <defs><linearGradient id="gA-${opts.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#43e8c0" stop-opacity=".22"/><stop offset="1" stop-color="#43e8c0" stop-opacity="0"/></linearGradient></defs>
       ${axisLines}
-      ${opts.area ? `<path d="${d} L${last.x.toFixed(1)} ${H - pb} L${pl} ${H - pb} Z" fill="url(#gA-${opts.id})"/>` : ''}
+      ${opts.area ? `<path d="${d} L${lastSolid.x.toFixed(1)} ${H - pb} L${pl} ${H - pb} Z" fill="url(#gA-${opts.id})"/>` : ''}
       <path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>
       ${projSvg}
-      <circle cx="${last.x}" cy="${last.y}" r="4" fill="${col}"/>
+      ${liveSvg}
+      <circle cx="${last.x}" cy="${last.y}" r="4.5" fill="${live ? 'var(--bg)' : col}" ${live ? 'stroke="var(--yellow)" stroke-width="2"' : ''}/>
       <text x="${pl}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit">${fdate(series[0].date)}</text>
       <text x="${(last.x).toFixed(1)}" y="${H - 3}" fill="var(--muted)" font-size="11" font-family="inherit" text-anchor="end">${fdate(last.p.date)}</text>
       <line class="cx" y1="${pt}" y2="${H - pb}" stroke="var(--muted)" visibility="hidden"/>
@@ -454,7 +458,7 @@
   function bankChart(series, proj) {
     const col = series.length && series[series.length - 1].value >= series[0].value ? 'var(--pos)' : 'var(--neg)';
     return lineChart(series, { id: 'bank', label: 'Evolución del bankroll', axis: v => mny(v), color: col, area: true, proj,
-      tip: p => `${fdate(p.date)} · <b>${eur(p.value)}</b>${p.bet ? `<br>${esc(selText(p.bet))} <span class="${cls(p.delta)}">${seur(p.delta)}</span>` : `<br>CAJA ${seur(p.delta)}`}` });
+      tip: p => p.live ? `HOY · <b>${eur(p.value)}</b><br>Bankroll actual · en juego <span class="neg">${seur(p.delta)}</span> (pendientes)` : `${fdate(p.date)} · <b>${eur(p.value)}</b>${p.bet ? `<br>${esc(selText(p.bet))} <span class="${cls(p.delta)}">${seur(p.delta)}</span>` : `<br>CAJA ${seur(p.delta)}`}` });
   }
   // Información al pasar el dedo por barras y calendario (elementos con data-tip)
   function wireIv() {
