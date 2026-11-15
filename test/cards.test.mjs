@@ -32,3 +32,15 @@ assert.strictEqual(C.prevSeason('2627'), '2526');
 // Unión de temporadas: la anterior pesa la mitad
 const mt = C.mergeTables(t, t, 0.5); assert(Math.abs(mt.lg.n - 108) < 1e-9);
 console.log('OK modelo de tarjetas y córneres');
+
+{
+  const { pickMessage } = await import('../supabase/functions/bt-cards/tg.js');
+  const p = { home: 'A & B', away: 'C', league: 'LaLiga', commence_time: '2026-11-20T20:00:00Z', fair_prob: { 1: 0.5, X: 0.25, 2: 0.25 }, fair_odds: { 1: 2, X: 4, 2: 4 },
+    totals: { point: 2.5, fair_odds: { O: 1.9, U: 2.1 }, fair_prob: { O: 0.526, U: 0.476 } },
+    cc: { corners: { mu: 9.7, lines: [{ line: 9.5, over: 49.1, under: 50.9, minOver: 2.1, minUnder: 2.02 }] }, cards: { mu: 4.6, lines: [{ line: 3.5, over: 65, under: 35, minOver: 1.59, minUnder: 2.94 }] } } };
+  const m = pickMessage(p, 0.03);
+  assert(m.includes('A &amp; B') && m.includes('Doble oportunidad') && m.includes('Empate no válido') && m.includes('Córners') && m.includes('Tarjetas'));
+  assert(m.includes('≥ 2,06'));                              // 1 a cuota justa 2,00 con umbral 3 %
+  assert(!pickMessage({ ...p, cc: null }, 0.03).includes('Córners'));
+  console.log('OK mensaje de Telegram');
+}
