@@ -894,7 +894,7 @@
 
   // Preferencias de la pantalla PICKS (solo en este móvil; si no se pueden guardar, se usan las de por defecto).
   const PV = 'betting.picksview.v1';
-  const pv = { sport: '', league: '', day: '', sort: 'value' };
+  const pv = { sport: '', league: '', day: '', bet: '', sort: 'value' };
   try { Object.assign(pv, JSON.parse(localStorage.getItem(PV) || '{}')); } catch (e) { /* sin almacenamiento */ }
   const savePv = () => { try { localStorage.setItem(PV, JSON.stringify(pv)); } catch (e) { /* sin almacenamiento */ } };
   const openPicks = new Set();
@@ -1027,14 +1027,16 @@
     const leagues = Array.from(new Set(upcoming.filter(p => !pv.sport || sportOf(p.sport_key) === pv.sport).map(p => p.league))).sort();
     if (pv.sport && !sports.includes(pv.sport)) pv.sport = '';
     if (pv.league && !leagues.includes(pv.league)) pv.league = '';
-    const filtered = upcoming.filter(p => (!pv.sport || sportOf(p.sport_key) === pv.sport) && (!pv.league || p.league === pv.league) &&
-      (!pv.day || (pv.day === 'later' ? dayOf(p) >= after : dayOf(p) === pv.day)));
-    const list = filtered.filter(p => picksMode === 'all' || pickHasValue(p))
-      .sort(pv.sort === 'time' ? (a, b) => a.commence_time.localeCompare(b.commence_time) || a.league.localeCompare(b.league)
-        : (a, b) => (pickHasValue(b) - pickHasValue(a)) || pickScore(b) - pickScore(a) || a.commence_time.localeCompare(b.commence_time));
     // Apuestas que ya tienes en cada partido (para no repetir).
     const mine = {};
     bets().forEach(b => { if (b.pickId) (mine[b.pickId] = mine[b.pickId] || []).push(b); });
+    const preFiltered = upcoming.filter(p => (!pv.sport || sportOf(p.sport_key) === pv.sport) && (!pv.league || p.league === pv.league) &&
+      (!pv.day || (pv.day === 'later' ? dayOf(p) >= after : dayOf(p) === pv.day)));
+    const nBet = preFiltered.filter(p => mine[p.id]).length, nNoBet = preFiltered.length - nBet;
+    const filtered = preFiltered.filter(p => !pv.bet || (pv.bet === 'yes' ? !!mine[p.id] : !mine[p.id]));
+    const list = filtered.filter(p => picksMode === 'all' || pv.bet === 'yes' || pickHasValue(p))
+      .sort(pv.sort === 'time' ? (a, b) => a.commence_time.localeCompare(b.commence_time) || a.league.localeCompare(b.league)
+        : (a, b) => (pickHasValue(b) - pickHasValue(a)) || pickScore(b) - pickScore(a) || a.commence_time.localeCompare(b.commence_time));
     const nVal = filtered.filter(pickHasValue).length;
     const ls = pickCache.lastScan;
     const chip = (k, v, label) => `<button data-pf="${k}" data-v="${v}" class="${pv[k] === v ? 'on' : ''}">${label}</button>`;
@@ -1061,6 +1063,7 @@
       <div class="seg grow">${['value', 'all'].map(m => `<button data-pm="${m}" class="${picksMode === m ? 'on' : ''}">${m === 'value' ? `⭐ ${nVal}` : `TODOS ${filtered.length}`}</button>`).join('')}</div>
       <div class="seg" style="width:128px">${chip('sort', 'value', 'VALOR')}${chip('sort', 'time', 'HORA')}</div>
     </div>
+    <div class="seg" style="margin-top:8px">${[['', `TODOS ${preFiltered.length}`], ['no', `SIN APOSTAR ${nNoBet}`], ['yes', `APOSTADOS ${nBet}`]].map(([k, t]) => chip('bet', k, t)).join('')}</div>
     <div class="chips scroll-x pkfilters" style="margin-top:8px">
       ${sports.length > 1 ? chip('sport', '', 'TODOS') + sports.map(s => chip('sport', s, SPORT_EMOJI[s] || '🏆')).join('') + '<span class="sep"></span>' : ''}
       ${chip('day', '', 'CUALQUIER DÍA')}${chip('day', today, 'HOY')}${chip('day', tomorrow, 'MAÑANA')}${chip('day', 'later', 'DESPUÉS')}
@@ -1068,7 +1071,7 @@
     ${leagues.length > 1 ? `<select id="pfLeague" style="margin-top:8px;width:100%"><option value="">Todas las ligas</option>${leagues.map(l => `<option ${pv.league === l ? 'selected' : ''} value="${esc(l)}">${esc(l)}</option>`).join('')}</select>` : ''}`;
 
     if (!list.length) html += `<div class="card empty">${!(pickCache.picks || []).length ? 'AÚN NO HAY PICKS. PULSA BUSCAR.'
-      : !filtered.length ? 'NINGÚN PARTIDO CON ESTOS FILTROS.' : 'NINGÚN PARTIDO CON ⭐ VALOR AHORA. TOCA "TODOS" PARA VERLOS.'}</div>`;
+      : !filtered.length ? (pv.bet === 'no' ? 'YA HAS APOSTADO EN TODOS LOS PARTIDOS DE ESTA LISTA.' : pv.bet === 'yes' ? 'AÚN NO HAS APOSTADO EN NINGÚN PARTIDO DE ESTA LISTA.' : 'NINGÚN PARTIDO CON ESTOS FILTROS.') : 'NINGÚN PARTIDO CON ⭐ VALOR AHORA. TOCA "TODOS" PARA VERLOS.'}</div>`;
     let hdr = null;
     list.forEach(p => {
       const d = new Date(p.commence_time), day = dayOf(p);
