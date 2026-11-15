@@ -337,10 +337,10 @@
       </div>
       <h2>EVOLUCIÓN DEL BANKROLL</h2>
       <div class="card">${bankChart(L.bankSeries(bs, ms).concat([{ date: today(), value: bank, delta: -pRisk, live: true }]), pend.length ? [{ v: L.r2(bank + pRisk + pMax), col: 'var(--pos)', label: mny(L.r2(bank + pRisk + pMax)) }].concat(pFair.length ? [{ v: L.r2(bank + pRisk + pEv), col: 'var(--muted)', label: mny(L.r2(bank + pRisk + pEv)) }] : []) : null)}</div>
+      <h2>RESUMEN</h2>
+      <div class="card" style="padding:8px 10px">${periodTable(L.periods(bs, today()), pend.length ? { n: pend.length, risk: pRisk, max: pMax, ev: pFair.length ? pEv : null, bankMax: L.r2(bank + pRisk + pMax), bankEv: L.r2(bank + pRisk + pEv) } : null)}</div>
       <h2 data-gopend style="cursor:pointer">PENDIENTES <span class="acc">${pend.length}</span> <span class="muted">VER TODAS ›</span></h2>
       ${pend.length ? pend.map(pendCard).join('') : '<div class="card empty">SIN APUESTAS PENDIENTES</div>'}
-      <h2>RESUMEN</h2>
-      <div class="card">${periodTable(L.periods(bs, today()), pend.length ? { n: pend.length, risk: pRisk, max: pMax, ev: pFair.length ? pEv : null, bankMax: L.r2(bank + pRisk + pMax), bankEv: L.r2(bank + pRisk + pEv) } : null)}</div>
       <button class="block" id="toCash" style="margin-top:6px">CAJA · SALDO POR CASA ›</button>
       <button class="block" id="homeClaude" style="margin-top:6px">✦ ANALIZAR CON CLAUDE</button>`;
     view.querySelectorAll('[data-close]').forEach(el => el.onclick = () => quickClose(el.dataset.id, el.dataset.close));
@@ -406,7 +406,7 @@
   }
 
   // Barras horizontales (con signo) interactivas: items = [{label, v, val, tip, col?, cls?}]
-  function hBars(items) {
+  function hBars(items, small) {
     if (!items.length) return '<div class="muted">SIN DATOS</div>';
     const max = Math.max(0.01, ...items.map(x => Math.abs(x.v))), hasNeg = items.some(x => x.v < 0), hasPos = items.some(x => x.v > 0);
     const rows = items.map(x => {
@@ -414,7 +414,7 @@
       const st = half ? `${pos ? 'left' : 'right'}:50%;width:${(w / 2).toFixed(1)}%` : `${hasNeg ? 'right' : 'left'}:0;width:${w.toFixed(1)}%`;
       return `<div class="hbr" data-tip="${esc(x.tip)}"><span class="hbl">${esc(x.label)}</span><div class="hbt${half ? ' c' : ''}"><i style="${st};background:${x.col || `var(--${pos ? 'pos' : 'neg'})`}"></i></div><span class="hbv ${x.cls != null ? x.cls : cls(x.v)}">${x.val}</span></div>`;
     }).join('');
-    return `<div class="ivbox">${rows}<div class="tip"></div></div>`;
+    return `<div class="ivbox${small ? ' sm' : ''}">${rows}<div class="tip"></div></div>`;
   }
   const withTable = (chart, table) => `${chart}<details class="vt"><summary>VER TABLA</summary>${table}</details>`;
 
@@ -425,7 +425,7 @@
       items.unshift({ label: 'PEND. MÁX.', v: pend.max, val: seur(pend.max), col: 'var(--cyan)', cls: 'pos', tip: `<b>${pend.n} pendientes</b> · apostado ${eur(pend.risk)}<br>Si aciertas todas <b class="pos">${seur(pend.max)}</b><br>Bankroll → ${eur(pend.bankMax)}` });
       if (pend.ev != null) items.splice(1, 0, { label: 'PEND. ESP.', v: pend.ev, val: seur(pend.ev), col: 'var(--muted)', tip: `<b>Esperado</b> de las pendientes<br><b class="${cls(pend.ev)}">${seur(pend.ev)}</b><br>Bankroll → ${eur(pend.bankEv)}` });
     }
-    return withTable(hBars(items), periodTableRaw(rows, pend));
+    return withTable(hBars(items, true), periodTableRaw(rows, pend));
   }
   function periodTableRaw(rows, pend) {
     return `<table class="tbl"><tr><th></th><th>N</th><th>APOSTADO</th><th>BENEFICIO</th><th>YIELD</th></tr>
