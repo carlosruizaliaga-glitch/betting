@@ -970,7 +970,41 @@
       ${mod && p.model.advice ? `<div class="muted hint" style="margin-top:4px">Consejo del modelo: ${esc(p.model.advice)}</div>` : ''}
       ${warn ? `<div class="hint" style="margin-top:6px;color:var(--yellow)">${esc(warn)}</div>` : ''}
       <div class="muted hint" style="margin-top:4px">La cuota mínima la marca el mercado afinado; las otras fuentes sirven para detectar partidos raros.</div>
-      ${soccer && !mod ? `<button class="block" style="margin-top:8px" data-model="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ VER MODELO DE API-FOOTBALL · 2 CONSULTAS</button>` : ''}`;
+      ${soccer && !mod ? `<button class="block" style="margin-top:8px" data-model="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ VER MODELO DE API-FOOTBALL · 2 CONSULTAS</button>` : ''}
+      ${ccBlock(p, soccer)}`;
+  }
+
+  // Modelo propio de tarjetas y córneres (football-data.co.uk): media esperada y líneas con probabilidad, cuota justa y cuota mínima con valor.
+  function ccBlock(p, soccer) {
+    if (!soccer) return '';
+    const c = p.cc, btn = (t) => `<button class="block" style="margin-top:8px" data-cc="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>${t}</button>`;
+    if (!c) return `<div class="pksec">TARJETAS Y CÓRNERS</div>${btn('＋ CALCULAR TARJETAS Y CÓRNERS · SIN COSTE')}
+      <div class="muted hint" style="margin-top:4px">Modelo propio con el historial de los dos equipos (football-data.co.uk). No gasta créditos ni consultas.</div>`;
+    const tbl = (m, name) => `<div class="muted" style="margin-top:8px"><b style="color:var(--text)">${name}</b> · media esperada <b style="color:var(--text)">${fnum(m.mu, 1)}</b></div>
+      <table class="tbl"><tr><th>LÍNEA</th><th>MÁS</th><th>MENOS</th></tr>${m.lines.map(l => `<tr><td>${fnum(l.line, 1)}</td>
+        <td class="num">${fnum(l.over, 0)}% <span class="muted">${odds(l.fairOver)}</span><br><span class="cyan">≥ ${odds(l.minOver)}</span></td>
+        <td class="num">${fnum(l.under, 0)}% <span class="muted">${odds(l.fairUnder)}</span><br><span class="cyan">≥ ${odds(l.minUnder)}</span></td></tr>`).join('')}</table>`;
+    return `<div class="pksec">TARJETAS Y CÓRNERS</div>
+      ${tbl(c.corners, 'CÓRNERS DEL PARTIDO')}${tbl(c.cards, 'TARJETAS DEL PARTIDO (AMARILLAS + ROJAS)')}
+      <div class="muted hint" style="margin-top:6px">Cada fila: probabilidad, cuota justa y <span class="cyan">cuota mínima con valor</span> (con tu umbral). Compáralas con la cuota de bet365. Basado en ${c.matches} partidos de ${esc(c.teams.home)} en casa y ${esc(c.teams.away)} fuera (media de la liga: ${fnum(c.leagueMean.corners, 1)} córners y ${fnum(c.leagueMean.cards, 1)} tarjetas). No tiene en cuenta árbitro, bajas ni motivación: ajusta con las noticias.</div>
+      ${btn('↻ ACTUALIZAR')}`;
+  }
+  async function loadCC(id) {
+    if (picksBusy) return;
+    picksBusy = true; picksMsg = 'CALCULANDO TARJETAS Y CÓRNERS…'; render();
+    try {
+      const r = await S.callCards({ action: 'cards', pickId: id });
+      picksBusy = false;
+      if (r.error) {
+        picksMsg = '⛔ ' + ({ league_not_covered: 'Esta liga no está en football-data.co.uk (no hay datos de córners y tarjetas).', teams_not_found: 'No encuentro a los dos equipos en los datos de la liga.', no_data: 'No hay datos de esta temporada todavía.', pick_not_found: 'Este partido ya no está guardado. Pulsa BUSCAR.', too_many_attempts: 'Demasiados intentos. Espera un poco.' }[r.error] || ('Error: ' + (r.message || r.error)));
+        render(); return;
+      }
+      const p = (pickCache.picks || []).find(x => x.id === id);
+      if (p) p.cc = r.cc;
+      savePicks({ picks: pickCache.picks });
+      picksMsg = 'TARJETAS Y CÓRNERS CALCULADOS (SIN COSTE)';
+      render();
+    } catch (e) { picksBusy = false; picksMsg = '⛔ Sin conexión. Inténtalo de nuevo.'; render(); }
   }
 
   // Comprobador de cuota de bet365 (normal o supercuota) para cualquier selección del partido.
@@ -1101,7 +1135,7 @@
     view.querySelector('#scanSend').onclick = () => runScan(true);
     view.querySelector('#scanOnly').onclick = () => runScan(false);
     view.querySelector('#askClaude').onclick = async () => {
-      const q = 'Usa el conector Betting: llama a estado_banca y a picks_proximos (próximas 48 horas). Para cada partido de "sin_apostar" y de "apostados", busca información real y actual en internet: estadísticas de la temporada y forma reciente de los dos equipos, enfrentamientos directos, clasificación y objetivos, lesiones y sanciones, alineaciones probables, árbitro y su media de tarjetas, noticias de las últimas 48 horas y, si hay, cuotas de otras casas. Con eso, da tu pronóstico (probabilidad y cuota justa) para estos mercados y compáralo con el precio del conector: 1X2, doble oportunidad, empate no válido, goles (más/menos 1,5, 2,5 y 3,5 y ambos marcan), tarjetas (total de partido) y córneres (total de partido). Para tarjetas y córneres no hay cuota en la app: estima la línea más probable con las medias de cada equipo y del árbitro, y dime a partir de qué cuota tendría valor para que yo la mire en bet365. Hazme dos partes. PARTE 1 · RECOMENDACIONES: con los partidos de "sin_apostar", dónde apostar y cuánto (en €, redondeando al nivel de stake de mi unidad), ordenados de mejor a peor, con el motivo y las fuentes que has usado. PARTE 2 · ANÁLISIS DE LO APOSTADO: para cada apuesta pendiente, si la cuota que cogí tenía valor (compara con la cuota justa al apostar y con las opciones actuales), si el mercado se movió a mi favor o en contra, qué riesgo acumulo y si conviene mantenerla o vigilar algo. Reglas: no sugieras apuestas sin ventaja suficiente; no inventes datos: si no encuentras algo, dilo; avisa de concentración en un partido o liga; el total en juego (pendiente más lo nuevo) no debe pasar del 10 % de mi banca. Termina con un resumen corto que pueda copiar y guarda en este proyecto lo que merezca la pena recordar (picks recomendados, aciertos y fallos de tus pronósticos).';
+      const q = 'Usa el conector Betting: llama a estado_banca y a picks_proximos (próximas 48 horas). Para cada partido de "sin_apostar" y de "apostados", busca información real y actual en internet: estadísticas de la temporada y forma reciente de los dos equipos, enfrentamientos directos, clasificación y objetivos, lesiones y sanciones, alineaciones probables, árbitro y su media de tarjetas, noticias de las últimas 48 horas y, si hay, cuotas de otras casas. Con eso, da tu pronóstico (probabilidad y cuota justa) para estos mercados y compáralo con el precio del conector: 1X2, doble oportunidad, empate no válido, goles (más/menos 1,5, 2,5 y 3,5 y ambos marcan), tarjetas (total de partido) y córneres (total de partido). Para tarjetas y córneres no hay cuota en la app: si el partido trae "modelo_tarjetas_corners" (mi modelo con estadísticas de los dos equipos) úsalo como base y ajústalo con el árbitro, las bajas y el contexto; si no lo trae, estima la línea más probable con las medias de cada equipo y del árbitro. En ambos casos dime a partir de qué cuota tendría valor para que yo la mire en bet365. Hazme dos partes. PARTE 1 · RECOMENDACIONES: con los partidos de "sin_apostar", dónde apostar y cuánto (en €, redondeando al nivel de stake de mi unidad), ordenados de mejor a peor, con el motivo y las fuentes que has usado. PARTE 2 · ANÁLISIS DE LO APOSTADO: para cada apuesta pendiente, si la cuota que cogí tenía valor (compara con la cuota justa al apostar y con las opciones actuales), si el mercado se movió a mi favor o en contra, qué riesgo acumulo y si conviene mantenerla o vigilar algo. Reglas: no sugieras apuestas sin ventaja suficiente; no inventes datos: si no encuentras algo, dilo; avisa de concentración en un partido o liga; el total en juego (pendiente más lo nuevo) no debe pasar del 10 % de mi banca. Termina con un resumen corto que pueda copiar y guarda en este proyecto lo que merezca la pena recordar (picks recomendados, aciertos y fallos de tus pronósticos).';
       try { await navigator.clipboard.writeText(q); } catch (e) { toast('NO SE PUDO COPIAR'); return; }
       let link = settings().claudeProject || '';
       if (!/^https:\/\/claude\.ai\/project\//.test(link)) {
@@ -1123,6 +1157,7 @@
       if (p) betFromPick(p, b.dataset.m, b.dataset.o, b.dataset.pt);
     });
     view.querySelectorAll('[data-model]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadModel(b.dataset.model); });
+    view.querySelectorAll('[data-cc]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadCC(b.dataset.cc); });
     // Comprobador: cuota de bet365 (normal o supercuota) frente a la justa
     view.querySelectorAll('.ckbox').forEach(box => {
       const id = box.dataset.ck, sel = box.querySelector('select'), inp = box.querySelector('input'), out = box.querySelector('.ckres');

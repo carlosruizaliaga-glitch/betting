@@ -21,6 +21,17 @@
   }
   function emit() { listeners.forEach(f => { try { f(); } catch (e) { console.error(e); } }); }
 
+  // Llama a una Edge Function (bt-picks, bt-cards…) con el código de acceso.
+  async function callFn(fn, body) {
+    const res = await fetch(API.replace('/rest/v1/rpc/', '/functions/v1/' + fn), {
+      method: 'POST',
+      headers: { apikey: KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ secret: db.secret }, body))
+    });
+    let data; try { data = await res.json(); } catch (e) { data = { error: 'HTTP ' + res.status }; }
+    if (data && data.error === 'bad_secret') { status = 'bad_secret'; emit(); }
+    return data;
+  }
   async function rpc(name, body) {
     const res = await fetch(API + name, {
       method: 'POST',
@@ -111,16 +122,8 @@
     remove: (kind, data) => put(kind, data, true),
     syncNow: () => sync(),
     // Llama a la Edge Function bt-picks con el código de acceso.
-    callPicks: async body => {
-      const res = await fetch(API.replace('/rest/v1/rpc/', '/functions/v1/bt-picks'), {
-        method: 'POST',
-        headers: { apikey: KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ secret: db.secret }, body))
-      });
-      let data; try { data = await res.json(); } catch (e) { data = { error: 'HTTP ' + res.status }; }
-      if (data && data.error === 'bad_secret') { status = 'bad_secret'; emit(); }
-      return data;
-    },
+    callPicks: body => callFn('bt-picks', body),
+    callCards: body => callFn('bt-cards', body),
     // Estado del servidor: 'new' (sin código) o 'configured'.
     serverStatus: () => rpc('bt_status'),
     // Crea (create=true) o comprueba el código. Devuelve created|ok|bad|too_short|not_configured.
