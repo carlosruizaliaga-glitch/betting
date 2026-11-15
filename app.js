@@ -931,22 +931,24 @@
 
   function pickCells(p, mk, market, thr, compact) {
     const keys = MK_KEYS[market] || outKeys(mk.fair_prob), pt = mk.point != null ? mk.point : null;
-    return `<div class="${compact ? 'pkrow' : 'pickrow'}" style="grid-template-columns:repeat(${keys.length},1fr)">${keys.map(o => {
+    return `<div class="${compact ? 'pkrow' : 'pickrow'} c${keys.length}" style="grid-template-columns:repeat(${keys.length},1fr)">${keys.map(o => {
       const b = mk.best && mk.best[o], isVal = mk.value_outcome === o, isFav = market === 'h2h' && p.favorite === o;
       const label = cellLabel(p, market, o, pt);
       const attrs = `data-pick="${esc(p.id)}" data-o="${o}" data-m="${market}"${pt != null ? ` data-pt="${pt}"` : ''}`;
       if (compact) return `<button class="pkc${isFav ? ' fav' : ''}${isVal ? ' val' : ''}" ${attrs}>
         <span class="o">${label}${isVal ? ' ⭐' : ''}</span><b>${fnum(mk.fair_prob[o] * 100, 0)}%${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</b>
         <span class="cyan">≥ ${odds(minB365(mk.fair_odds[o], thr))}</span></button>`;
+      const pr = mk.fair_prob[o] * 100, pcl = pr >= 60 ? 'pos' : pr >= 35 ? 'yellow' : 'neg', so = softOdds(mk, o), se = so ? so / mk.fair_odds[o] - 1 : null;
+      const ecl = e => e >= 0 ? 'pos' : e > -0.05 ? 'yellow' : 'neg';
       return `<button class="pk${isFav ? ' fav' : ''}${isVal ? ' val' : ''}" ${attrs}>
         <span class="o">${label}${isVal ? ' ⭐' : isFav ? ' ➜' : ''}</span>
-        <b>${fnum(mk.fair_prob[o] * 100, 0)} %${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</b>
-        <span>JUSTA ${odds(mk.fair_odds[o])}</span>
-        <span class="cyan">VALOR ≥ ${odds(minB365(mk.fair_odds[o], thr))}</span>
-        <span class="muted">SIN PÉRDIDA ≥ ${odds(breakEven(mk.fair_odds[o]))}</span>
-        ${softOdds(mk, o) ? `<span class="muted">CASAS ~${odds(softOdds(mk, o))}</span>` : ''}
-        ${mk.best ? `<span class="muted">${b ? esc(b.book) : '—'}</span>
-        <span class="${b && b.edge > 0 ? 'pos' : 'muted'}">${b ? `${odds(b.odds)} (${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)` : ''}</span>` : ''}
+        <span class="pkp ${pcl}">${fnum(pr, 0)}%${market === 'h2h' ? moveHtml(moveOf(p, o)) : ''}</span>
+        <div class="pkb"><i class="bg-${pcl}" style="width:${Math.max(3, Math.min(100, pr)).toFixed(0)}%"></i></div>
+        <div class="kr"><em>Justa</em><b>${odds(mk.fair_odds[o])}</b></div>
+        <div class="kr"><em>Valor ≥</em><b class="cyan">${odds(minB365(mk.fair_odds[o], thr))}</b></div>
+        <div class="kr"><em>Sin pérdida ≥</em><b class="muted">${odds(breakEven(mk.fair_odds[o]))}</b></div>
+        ${so ? `<div class="kr"><em>Casas ~</em><b class="${ecl(se)}">${odds(so)}</b></div>` : ''}
+        ${mk.best ? `<div class="kr"><em>${b ? esc(b.book) : 'Mejor cuota'}</em><b class="${b ? ecl(b.edge) : 'muted'}">${b ? `${odds(b.odds)} <small>(${b.edge >= 0 ? '+' : ''}${fnum(b.edge * 100, 0)} %)</small>` : '—'}</b></div>` : ''}
       </button>`;
     }).join('')}</div>`;
   }
@@ -974,14 +976,20 @@
     const keys = ['1', 'X', '2'].filter(k => p.fair_prob && p.fair_prob[k] != null);
     const soft = softProb(p), mod = p.model && p.model.p;
     const lab = k => k === 'X' ? 'EMPATE' : (k === '1' ? p.home : p.away).toUpperCase();
-    const row = (name, pr, cls2) => `<tr><td class="${cls2 || ''}">${name}</td>${keys.map(k => `<td class="num">${pr && pr[k] != null ? fnum(pr[k] * 100, 0) + '%' : '—'}</td>`).join('')}</tr>`;
+    const pcl = x => x >= 0.6 ? 'pos' : x >= 0.35 ? 'yellow' : 'neg';
+    const row = (name, pr, cls2, vs) => `<tr><td class="${cls2 || ''}">${name}</td>${keys.map(k => {
+      if (!pr || pr[k] == null) return '<td class="num muted">—</td>';
+      const d = vs ? Math.abs(pr[k] - (vs[k] || 0)) : null, c = d == null ? pcl(pr[k]) : d <= 0.03 ? 'pos' : d <= 0.08 ? 'yellow' : 'neg';
+      return `<td class="num ${c}">${fnum(pr[k] * 100, 0)}%</td>`;
+    }).join('')}</tr>`;
     const diff = (a, b) => a && b ? Math.max(...keys.map(k => Math.abs((a[k] || 0) - (b[k] || 0)))) : 0;
     const dm = diff(p.fair_prob, mod), ds = diff(p.fair_prob, soft && soft.p);
     const warn = dm > 0.08 ? `El modelo se separa ${fnum(dm * 100, 0)} puntos del mercado: mira el partido con calma (bajas, rotaciones, motivación) antes de apostar.`
       : ds > 0.05 ? `Las casas normales se separan ${fnum(ds * 100, 0)} puntos del mercado afinado: alguna puede ir con retraso.` : '';
     return `<div class="pksec">FUENTES</div>
       <table class="tbl srcs"><tr><th></th>${keys.map(k => `<th class="ellipsis" style="max-width:80px">${esc(lab(k))}</th>`).join('')}</tr>
-        ${row('Mercado afinado', p.fair_prob, 'pos')}${row(`Casas normales${soft ? ' (' + soft.n + ')' : ''}`, soft && soft.p)}${row('Modelo API-Football', mod)}</table>
+        ${row('Mercado afinado', p.fair_prob, 'pos')}${row(`Casas normales${soft ? ' (' + soft.n + ')' : ''}`, soft && soft.p, '', p.fair_prob)}${row('Modelo API-Football', mod, '', p.fair_prob)}</table>
+      <div class="muted hint" style="margin-top:4px"><span class="pos">Verde</span>: coincide con el mercado (±3 puntos) · <span class="yellow">amarillo</span>: se separa algo · <span class="neg">rojo</span>: se separa mucho (más de 8).</div>
       ${mod && p.model.advice ? `<div class="muted hint" style="margin-top:4px">Consejo del modelo: ${esc(p.model.advice)}</div>` : ''}
       ${warn ? `<div class="hint" style="margin-top:6px;color:var(--yellow)">${esc(warn)}</div>` : ''}
       <div class="muted hint" style="margin-top:4px">La cuota mínima la marca el mercado afinado; las otras fuentes sirven para detectar partidos raros.</div>
@@ -996,13 +1004,15 @@
     const c = p.cc, btn = (t) => `<button class="block" style="margin-top:8px" data-cc="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>${t}</button>`;
     if (!c) return `<div class="pksec">TARJETAS Y CÓRNERS</div>${btn('＋ CALCULAR TARJETAS Y CÓRNERS · SIN COSTE')}
       <div class="muted hint" style="margin-top:4px">Modelo propio con el historial de los dos equipos (football-data.co.uk). No gasta créditos ni consultas.</div>`;
-    const tbl = (m, name) => `<div class="muted" style="margin-top:8px"><b style="color:var(--text)">${name}</b> · media esperada <b style="color:var(--text)">${fnum(m.mu, 1)}</b></div>
-      <table class="tbl"><tr><th>LÍNEA</th><th>MÁS</th><th>MENOS</th></tr>${m.lines.map(l => `<tr><td>${fnum(l.line, 1)}</td>
-        <td class="num">${fnum(l.over, 0)}% <span class="muted">${odds(l.fairOver)}</span><br><span class="cyan">≥ ${odds(l.minOver)}</span></td>
-        <td class="num">${fnum(l.under, 0)}% <span class="muted">${odds(l.fairUnder)}</span><br><span class="cyan">≥ ${odds(l.minUnder)}</span></td></tr>`).join('')}</table>`;
+    const tbl = (m, name) => {
+      const main = m.lines.reduce((a, l) => Math.abs(l.over - 50) < Math.abs(a.over - 50) ? l : a, m.lines[0]);
+      const cell = (pr, fair, min, isMain) => { const c = pr >= 60 ? 'pos' : pr >= 35 ? 'yellow' : 'neg'; return `<div class="cc${isMain ? ' main' : ''}"><b class="${c}">${fnum(pr, 0)}%</b><div class="bar"><i class="bg-${c}" style="width:${pr}%"></i></div><span>justa ${odds(fair)}</span><span class="v cyan">≥ ${odds(min)}</span></div>`; };
+      return `<div style="margin-top:12px"><b>${name}</b> <span class="muted">· media esperada</span> <b>${fnum(m.mu, 1)}</b></div>
+        <div class="ccg"><span></span><div class="ch">MÁS DE</div><div class="ch">MENOS DE</div>${m.lines.map(l => `<div class="ccl">${fnum(l.line, 1)}${l === main ? '<small>PRINCIPAL</small>' : ''}</div>${cell(l.over, l.fairOver, l.minOver, l === main)}${cell(l.under, l.fairUnder, l.minUnder, l === main)}`).join('')}</div>`;
+    };
     return `<div class="pksec">TARJETAS Y CÓRNERS</div>
       ${tbl(c.corners, 'CÓRNERS DEL PARTIDO')}${tbl(c.cards, 'TARJETAS DEL PARTIDO (AMARILLAS + ROJAS)')}
-      <div class="muted hint" style="margin-top:6px">Cada fila: probabilidad, cuota justa y <span class="cyan">cuota mínima con valor</span> (con tu umbral). Compáralas con la cuota de bet365. Basado en ${c.matches} partidos de ${esc(c.teams.home)} en casa y ${esc(c.teams.away)} fuera (media de la liga: ${fnum(c.leagueMean.corners, 1)} córners y ${fnum(c.leagueMean.cards, 1)} tarjetas). No tiene en cuenta árbitro, bajas ni motivación: ajusta con las noticias.</div>
+      <div class="muted hint" style="margin-top:6px">Cada casilla: probabilidad (<span class="pos">alta</span>, <span class="yellow">media</span>, <span class="neg">baja</span>), cuota justa y <span class="cyan">cuota mínima con valor</span> (con tu umbral). La línea marcada PRINCIPAL es la más equilibrada (cerca del 50 %). Compáralas con la cuota de bet365. Basado en ${c.matches} partidos de ${esc(c.teams.home)} en casa y ${esc(c.teams.away)} fuera (media de la liga: ${fnum(c.leagueMean.corners, 1)} córners y ${fnum(c.leagueMean.cards, 1)} tarjetas). No tiene en cuenta árbitro, bajas ni motivación: ajusta con las noticias.</div>
       ${btn('↻ ACTUALIZAR')}`;
   }
   async function sendTG(id) {
