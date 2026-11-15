@@ -29,7 +29,7 @@ function funds(bets: any[], moves: any[]) {
 async function toolEstado() {
   const { bets, moves, st } = await state();
   const f = funds(bets, moves), today = new Date().toISOString().slice(0, 10);
-  const pend = bets.filter(b => !b.result).map(b => ({ fecha: b.date, evento: b.event, seleccion: (b.legs || []).map((l: any) => l.sel).join(' + ') || b.event, cuota: b.odds, importe: b.stake, casa: b.book, mercado: b.type }));
+  const pend = bets.filter(b => !b.result).map(b => ({ fecha: b.date, evento: b.event, seleccion: (b.legs || []).map((l: any) => l.sel).join(' + ') || b.event, cuota: b.odds, importe: b.stake, casa: b.book, mercado: b.type, cuota_justa_al_apostar: b.fair || null }));
   const closed = bets.filter(b => b.result && !b.bonus), week = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
   const sum = (a: any[]) => r2(a.reduce((s, b) => s + profit(b), 0));
   return {
@@ -46,7 +46,9 @@ async function toolPicks(args: any) {
   const { bets, moves, st } = await state();
   const f = funds(bets, moves), thr = (st.threshold != null ? +st.threshold : 3) / 100;
   const books: string[] = (st.myBooks && st.myBooks.length ? st.myBooks : st.books && st.books.length ? st.books : ['bet365']).map((x: string) => x.toLowerCase());
-  const out: any[] = [];
+  const outNo: any[] = [], outYes: any[] = [];
+  const byPick: Record<string, any[]> = {};
+  bets.forEach(b => { if (b.pickId && !b.result) (byPick[b.pickId] = byPick[b.pickId] || []).push(b); });
   const kelly = (o: number, fair: number) => { const p = 1 / fair, k = (p * o - 1) / (o - 1); return k > 0 ? k * (+st.kelly || 0.25) : 0; };
   for (const p of picks || []) {
     const opts: any[] = [];
@@ -62,11 +64,14 @@ async function toolPicks(args: any) {
     };
     add('1X2/ganador', p.fair_odds, p.best, p.prices);
     if (p.totals && p.totals.fair_odds) add('Más/Menos ' + p.totals.point, p.totals.fair_odds, p.totals.best, p.totals.prices);
-    const sel = onlyValue ? opts.filter(o => o.hay_valor) : opts;
+    const mine = byPick[p.id] || [];
+    const sel = mine.length || !onlyValue ? opts : opts.filter(o => o.hay_valor);
     if (!sel.length) continue;
-    out.push({ pick_id: p.id, partido: p.home + ' - ' + p.away, liga: p.league, empieza_utc: p.commence_time, fuentes_precio_justo: p.fair_src, prediccion_modelo_pct: p.model || null, opciones: sel });
+    const item: any = { pick_id: p.id, partido: p.home + ' - ' + p.away, liga: p.league, empieza_utc: p.commence_time, fuentes_precio_justo: p.fair_src, prediccion_modelo_pct: p.model || null, opciones_ahora: sel };
+    if (mine.length) { item.mis_apuestas = mine.map(b => ({ seleccion: (b.legs || []).map((l: any) => l.sel).join(' + ') || b.event, cuota_que_cogi: b.odds, importe_eur: b.stake, cuota_justa_al_apostar: b.fair || null, casa: b.book })); outYes.push(item); }
+    else outNo.push(item);
   }
-  return { banca_disponible_eur: f.available, umbral_valor_pct: thr * 100, nota: 'ventaja = cuota/cuota_justa - 1. stake_kelly_eur ya aplica la fracción Kelly del usuario. Solo lectura: no se apuesta desde aquí.', picks: out };
+  return { banca_disponible_eur: f.available, umbral_valor_pct: thr * 100, nota: 'ventaja = cuota/cuota_justa - 1. stake_kelly_eur ya aplica la fracción Kelly del usuario. sin_apostar: candidatos a recomendar (solo con valor). apostados: partidos donde ya hay apuesta pendiente, con las opciones ACTUALES para comparar con lo que se cogió. Solo lectura: no se apuesta desde aquí.', sin_apostar: outNo, apostados: outYes };
 }
 
 const TOOLS = [
@@ -76,7 +81,7 @@ const TOOLS = [
 
 async function handle(m: any) {
   const id = m.id, ok = (result: unknown) => ({ jsonrpc: '2.0', id, result });
-  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.0.0' } });
+  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.1.0' } });
   if (m.method === 'ping') return ok({});
   if (m.method === 'tools/list') return ok({ tools: TOOLS });
   if (m.method === 'tools/call') {
