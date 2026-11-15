@@ -204,6 +204,8 @@
     else if (st === 'ok') { c = 'ok'; t = 'SINCRONIZADO'; }
     else t = '…';
     dot.className = 'dot ' + c; txt.textContent = t;
+    // El estado solo se muestra si hay algo que avisar (sin conexión, error o cambios sin subir)
+    const pill = dot.parentElement; if (pill) pill.style.display = (c === 'ok' || t === '…') ? 'none' : '';
   }
 
   // Apariencia: tema (auto / oscuro / claro) y tamaño de letra (pequeño / normal / grande)
