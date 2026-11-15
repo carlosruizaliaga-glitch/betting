@@ -6,6 +6,8 @@ const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 const H = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'POST, GET, DELETE, OPTIONS' };
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
+// En la app una apuesta sin resultado tiene result 'P' (pendiente) o vacío.
+const isClosed = (b: any) => !!b.result && b.result !== 'P';
 const profit = (b: any) => {
   const s = +b.stake || 0, o = +b.odds || 1, f = !!b.bonus, r = b.result;
   const pay = r === 'W' ? (f ? s * (o - 1) : s * o) : r === 'V' ? (f ? 0 : s) : r === 'HW' ? (f ? s * .5 * (o - 1) : s * .5 * (1 + o)) : r === 'HL' ? (f ? 0 : s * .5) : r === 'CO' ? +b.cashout || 0 : 0;
@@ -22,15 +24,15 @@ async function state() {
 function funds(bets: any[], moves: any[]) {
   let net = 0, bonus = 0, prof = 0, pend = 0;
   moves.forEach(m => { const a = Math.abs(+m.amount || 0); if (m.type === 'deposit') net += a; else if (m.type === 'withdrawal') net -= a; else if (m.type === 'bonus') bonus += a; });
-  bets.forEach(b => { if (b.result) prof += profit(b); else if (!b.bonus) pend += +b.stake || 0; });
+  bets.forEach(b => { if (isClosed(b)) prof += profit(b); else if (!b.bonus) pend += +b.stake || 0; });
   return { available: r2(net + bonus + prof - pend), enJuego: r2(pend), beneficioCerrado: r2(prof), depositosNetos: r2(net + bonus) };
 }
 
 async function toolEstado() {
   const { bets, moves, st } = await state();
   const f = funds(bets, moves), today = new Date().toISOString().slice(0, 10);
-  const pend = bets.filter(b => !b.result).map(b => ({ fecha: b.date, evento: b.event, seleccion: (b.legs || []).map((l: any) => l.sel).join(' + ') || b.event, cuota: b.odds, importe: b.stake, casa: b.book, mercado: b.type, cuota_justa_al_apostar: b.fair || null }));
-  const closed = bets.filter(b => b.result && !b.bonus), week = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  const pend = bets.filter(b => !isClosed(b)).map(b => ({ fecha: b.date, evento: b.event, seleccion: (b.legs || []).map((l: any) => l.sel).join(' + ') || b.event, cuota: b.odds, importe: b.stake, casa: b.book, mercado: b.type, cuota_justa_al_apostar: b.fair || null }));
+  const closed = bets.filter(b => isClosed(b) && !b.bonus), week = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
   const sum = (a: any[]) => r2(a.reduce((s, b) => s + profit(b), 0));
   return {
     banca_disponible_eur: f.available, en_juego_eur: f.enJuego, beneficio_total_cerrado_eur: f.beneficioCerrado, depositos_netos_mas_bonos_eur: f.depositosNetos,
@@ -40,7 +42,7 @@ async function toolEstado() {
 }
 
 async function toolPicks(args: any) {
-  const hours = Math.min(168, Math.max(1, +args.horas || 48)), onlyValue = args.solo_valor !== false;
+  const hours = Math.min(168, Math.max(1, +args.horas || 48)), onlyValue = args.solo_valor === true;
   const now = new Date(), until = new Date(now.getTime() + hours * 3600e3);
   const { data: picks } = await db.from('bt_picks').select('id,home,away,league,sport,commence_time,fair_odds,fair_prob,first_fair_prob,best,prices,totals,extras,model,fair_src,devig,cc').gt('commence_time', now.toISOString()).lt('commence_time', until.toISOString()).order('commence_time').limit(300);
   const { bets, moves, st } = await state();
@@ -48,7 +50,7 @@ async function toolPicks(args: any) {
   const books: string[] = (st.myBooks && st.myBooks.length ? st.myBooks : st.books && st.books.length ? st.books : ['bet365']).map((x: string) => x.toLowerCase());
   const outNo: any[] = [], outYes: any[] = [];
   const byPick: Record<string, any[]> = {};
-  bets.forEach(b => { if (b.pickId && !b.result) (byPick[b.pickId] = byPick[b.pickId] || []).push(b); });
+  bets.forEach(b => { if (b.pickId && !isClosed(b)) (byPick[b.pickId] = byPick[b.pickId] || []).push(b); });
   const kelly = (o: number, fair: number) => { const p = 1 / fair, k = (p * o - 1) / (o - 1); return k > 0 ? k * (+st.kelly || 0.25) : 0; };
   for (const p of picks || []) {
     const opts: any[] = [];
@@ -78,7 +80,7 @@ async function toolPicks(args: any) {
     if (mine.length) { item.mis_apuestas = mine.map(b => ({ seleccion: (b.legs || []).map((l: any) => l.sel).join(' + ') || b.event, cuota_que_cogi: b.odds, importe_eur: b.stake, cuota_justa_al_apostar: b.fair || null, casa: b.book })); outYes.push(item); }
     else outNo.push(item);
   }
-  return { banca_disponible_eur: f.available, umbral_valor_pct: thr * 100, nota: 'ventaja = cuota/cuota_justa - 1. stake_kelly_eur ya aplica la fracción Kelly del usuario. sin_apostar: candidatos a recomendar (solo con valor). apostados: partidos donde ya hay apuesta pendiente, con las opciones ACTUALES para comparar con lo que se cogió. mercados_derivados: doble oportunidad y empate no válido calculados desde el precio justo 1X2 (comparar con la cuota real de la casa). modelo_tarjetas_corners: modelo propio (football-data.co.uk) con media y líneas de córneres y tarjetas si el usuario lo calculó en la app. Solo lectura: no se apuesta desde aquí.', sin_apostar: outNo, apostados: outYes };
+  return { banca_disponible_eur: f.available, umbral_valor_pct: thr * 100, nota: 'ventaja = cuota/cuota_justa - 1. stake_kelly_eur ya aplica la fracción Kelly del usuario. sin_apostar: todos los partidos sin apuesta (hay_valor marca los que tienen ventaja). apostados: partidos donde ya hay apuesta pendiente, con las opciones ACTUALES para comparar con lo que se cogió. mercados_derivados: doble oportunidad y empate no válido calculados desde el precio justo 1X2 (comparar con la cuota real de la casa). modelo_tarjetas_corners: modelo propio (football-data.co.uk) con media y líneas de córneres y tarjetas si el usuario lo calculó en la app. Solo lectura: no se apuesta desde aquí.', sin_apostar: outNo, apostados: outYes };
 }
 
 const TOOLS = [
@@ -88,7 +90,7 @@ const TOOLS = [
 
 async function handle(m: any) {
   const id = m.id, ok = (result: unknown) => ({ jsonrpc: '2.0', id, result });
-  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.3.0' } });
+  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.4.0' } });
   if (m.method === 'ping') return ok({});
   if (m.method === 'tools/list') return ok({ tools: TOOLS });
   if (m.method === 'tools/call') {
