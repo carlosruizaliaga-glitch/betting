@@ -64,10 +64,17 @@ async function toolPicks(args: any) {
     };
     add('1X2/ganador', p.fair_odds, p.best, p.prices);
     if (p.totals && p.totals.fair_odds) add('Más/Menos ' + p.totals.point, p.totals.fair_odds, p.totals.best, p.totals.prices);
+    // Doble oportunidad y empate no válido, derivados de las probabilidades justas 1X2 (sin cuota de casa: se da la mínima con valor)
+    const pr = p.fair_prob || {}, derived: any[] = [];
+    if (pr['1'] && pr['X'] && pr['2']) {
+      const mk = (mercado: string, resultado: string, prob: number) => derived.push({ mercado, resultado, probabilidad_justa_pct: r2(prob * 100), cuota_justa: r2(1 / prob), cuota_minima_con_valor: r2(Math.ceil(100 / prob * (1 + thr) - 1e-9) / 100) });
+      mk('Doble oportunidad', '1X', pr['1'] + pr['X']); mk('Doble oportunidad', 'X2', pr['X'] + pr['2']); mk('Doble oportunidad', '12', pr['1'] + pr['2']);
+      mk('Empate no válido', '1 (DNB)', pr['1'] / (pr['1'] + pr['2'])); mk('Empate no válido', '2 (DNB)', pr['2'] / (pr['1'] + pr['2']));
+    }
     const mine = byPick[p.id] || [];
     const sel = mine.length || !onlyValue ? opts : opts.filter(o => o.hay_valor);
     if (!sel.length) continue;
-    const item: any = { pick_id: p.id, partido: p.home + ' - ' + p.away, liga: p.league, empieza_utc: p.commence_time, fuentes_precio_justo: p.fair_src, prediccion_modelo_pct: p.model || null, opciones_ahora: sel };
+    const item: any = { pick_id: p.id, partido: p.home + ' - ' + p.away, liga: p.league, empieza_utc: p.commence_time, fuentes_precio_justo: p.fair_src, prediccion_modelo_pct: p.model || null, opciones_ahora: sel, mercados_derivados: derived, extras_guardados: p.extras || null };
     if (mine.length) { item.mis_apuestas = mine.map(b => ({ seleccion: (b.legs || []).map((l: any) => l.sel).join(' + ') || b.event, cuota_que_cogi: b.odds, importe_eur: b.stake, cuota_justa_al_apostar: b.fair || null, casa: b.book })); outYes.push(item); }
     else outNo.push(item);
   }
@@ -81,7 +88,7 @@ const TOOLS = [
 
 async function handle(m: any) {
   const id = m.id, ok = (result: unknown) => ({ jsonrpc: '2.0', id, result });
-  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.1.0' } });
+  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.2.0' } });
   if (m.method === 'ping') return ok({});
   if (m.method === 'tools/list') return ok({ tools: TOOLS });
   if (m.method === 'tools/call') {

@@ -1049,6 +1049,7 @@
         <button class="primary grow" id="scanSend" style="padding:13px 6px" ${picksBusy ? 'disabled' : ''}>${picksBusy ? '…' : '🔥 PICKS → TELEGRAM'}</button>
         <button id="scanOnly" style="padding:13px 10px" ${picksBusy ? 'disabled' : ''}>BUSCAR</button></div>
       <button class="block" id="askClaude" style="margin-top:6px">✦ ANALIZAR CON CLAUDE</button>
+      <div style="text-align:center;margin-top:4px"><button class="linkbtn" id="chgProject" style="background:none;border:0;color:var(--muted);font-size:11px;letter-spacing:.08em;padding:4px">${settings().claudeProject ? 'CAMBIAR PROYECTO DE CLAUDE' : ''}</button></div>
       ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
     </div>
     ${picksHelp ? `<div class="card hint" style="margin-top:8px"><b style="color:var(--text)">Cómo leer los picks</b><br>
@@ -1100,10 +1101,19 @@
     view.querySelector('#scanSend').onclick = () => runScan(true);
     view.querySelector('#scanOnly').onclick = () => runScan(false);
     view.querySelector('#askClaude').onclick = async () => {
-      const q = 'Usa el conector Betting: llama a estado_banca y a picks_proximos (próximas 48 horas). Hazme dos partes. PARTE 1 · RECOMENDACIONES: con los partidos de "sin_apostar", dime dónde apostar y cuánto (en €, redondeando al nivel de stake de mi unidad), ordenados de mejor a peor y con una frase de motivo cada uno. PARTE 2 · ANÁLISIS DE LO APOSTADO: con los partidos de "apostados" y las pendientes de estado_banca, dime para cada apuesta si la cuota que cogí tenía valor (compara mi cuota con la cuota justa al apostar y con las opciones actuales), si el mercado se ha movido a mi favor o en contra, y qué riesgo acumulo en total; indica si conviene mantenerla o hay algo que vigilar. Reglas: no sugieras apuestas sin ventaja suficiente; avisa si hay concentración en el mismo partido o liga; que el total en juego (contando lo ya pendiente más lo nuevo) no pase del 10 % de mi banca; avisa de lesiones o contexto que conozcas y que cambien el valor. Si no hay nada que merezca la pena, dímelo claramente. Termina con un resumen corto que pueda copiar.';
-      try { await navigator.clipboard.writeText(q); toast('PETICIÓN COPIADA · PÉGALA EN CLAUDE'); } catch (e) { toast('NO SE PUDO COPIAR'); }
-      setTimeout(() => window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank'), 600);
+      const q = 'Usa el conector Betting: llama a estado_banca y a picks_proximos (próximas 48 horas). Para cada partido de "sin_apostar" y de "apostados", busca información real y actual en internet: estadísticas de la temporada y forma reciente de los dos equipos, enfrentamientos directos, clasificación y objetivos, lesiones y sanciones, alineaciones probables, árbitro y su media de tarjetas, noticias de las últimas 48 horas y, si hay, cuotas de otras casas. Con eso, da tu pronóstico (probabilidad y cuota justa) para estos mercados y compáralo con el precio del conector: 1X2, doble oportunidad, empate no válido, goles (más/menos 1,5, 2,5 y 3,5 y ambos marcan), tarjetas (total de partido) y córneres (total de partido). Para tarjetas y córneres no hay cuota en la app: estima la línea más probable con las medias de cada equipo y del árbitro, y dime a partir de qué cuota tendría valor para que yo la mire en bet365. Hazme dos partes. PARTE 1 · RECOMENDACIONES: con los partidos de "sin_apostar", dónde apostar y cuánto (en €, redondeando al nivel de stake de mi unidad), ordenados de mejor a peor, con el motivo y las fuentes que has usado. PARTE 2 · ANÁLISIS DE LO APOSTADO: para cada apuesta pendiente, si la cuota que cogí tenía valor (compara con la cuota justa al apostar y con las opciones actuales), si el mercado se movió a mi favor o en contra, qué riesgo acumulo y si conviene mantenerla o vigilar algo. Reglas: no sugieras apuestas sin ventaja suficiente; no inventes datos: si no encuentras algo, dilo; avisa de concentración en un partido o liga; el total en juego (pendiente más lo nuevo) no debe pasar del 10 % de mi banca. Termina con un resumen corto que pueda copiar y guarda en este proyecto lo que merezca la pena recordar (picks recomendados, aciertos y fallos de tus pronósticos).';
+      try { await navigator.clipboard.writeText(q); } catch (e) { toast('NO SE PUDO COPIAR'); return; }
+      let link = settings().claudeProject || '';
+      if (!/^https:\/\/claude\.ai\/project\//.test(link)) {
+        const v = (window.prompt('Pega el enlace de tu proyecto Betting en claude.ai (empieza por https://claude.ai/project/…)') || '').trim();
+        if (!/^https:\/\/claude\.ai\/project\//.test(v)) { toast('PETICIÓN COPIADA · FALTA EL ENLACE DEL PROYECTO'); return; }
+        link = v.split('?')[0]; saveSettings({ claudeProject: link });
+      }
+      toast('PETICIÓN COPIADA · PÉGALA EN UN CHAT NUEVO DEL PROYECTO');
+      setTimeout(() => window.open(link, '_blank'), 700);
     };
+    const chgProj = view.querySelector('#chgProject');
+    if (chgProj) chgProj.onclick = () => { const v = (window.prompt('Enlace del proyecto Betting en claude.ai', settings().claudeProject || '') || '').trim(); if (/^https:\/\/claude\.ai\/project\//.test(v)) saveSettings({ claudeProject: v.split('?')[0] }); };
     view.querySelectorAll('[data-toggle]').forEach(h => h.onclick = () => {
       const id = h.dataset.toggle; if (openPicks.has(id)) openPicks.delete(id); else openPicks.add(id); render();
     });
