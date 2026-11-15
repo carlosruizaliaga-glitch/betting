@@ -319,7 +319,7 @@
       </div>
       <h2>EVOLUCIÓN DEL BANKROLL</h2>
       <div class="card">${bankChart(L.bankSeries(bs, ms).concat([{ date: today(), value: bank, delta: -pRisk, live: true }]), pend.length ? [{ v: L.r2(bank + pRisk + pMax), col: 'var(--pos)', label: mny(L.r2(bank + pRisk + pMax)) }].concat(pFair.length ? [{ v: L.r2(bank + pRisk + pEv), col: 'var(--muted)', label: mny(L.r2(bank + pRisk + pEv)) }] : []) : null)}</div>
-      <h2>PENDIENTES <span class="acc">${pend.length}</span></h2>
+      <h2 data-gopend style="cursor:pointer">PENDIENTES <span class="acc">${pend.length}</span> <span class="muted">VER TODAS ›</span></h2>
       ${pend.length ? pend.map(pendCard).join('') : '<div class="card empty">SIN APUESTAS PENDIENTES</div>'}
       <h2>RESUMEN</h2>
       <div class="card">${periodTable(L.periods(bs, today()), pend.length ? { n: pend.length, risk: pRisk, max: pMax, ev: pFair.length ? pEv : null, bankMax: L.r2(bank + pRisk + pMax), bankEv: L.r2(bank + pRisk + pEv) } : null)}</div>
@@ -328,6 +328,8 @@
     view.querySelectorAll('[data-more]').forEach(el => el.onclick = ev => { ev.stopPropagation(); openBet(S.get(el.dataset.more)); });
     view.querySelectorAll('.pend[data-open]').forEach(el => el.onclick = ev => { if (ev.target.closest('button')) return; openBet(S.get(el.dataset.open)); });
     view.querySelector('#toCash').onclick = () => go('cash');
+    const gp = view.querySelector('[data-gopend]'); if (gp) gp.onclick = () => { filters.result = 'P'; go('bets'); };
+    const hero = view.querySelector('.hero'); if (hero) hero.onclick = ev => { if (!ev.target.closest('button')) go('stats'); };
     wireChart();
   }
 
@@ -578,6 +580,7 @@
     };
     const m = sheet(`<h3>${isNew ? '+ NUEVA APUESTA' : 'EDITAR APUESTA'}</h3>
       ${b.pickId ? matchCard(b) : ''}
+      ${b.pickId && !isNew && (pickCache.picks || []).some(x => x.id === b.pickId) ? '<button type="button" class="small" id="toPick" style="margin-top:6px">VER PARTIDO EN PICKS ›</button>' : ''}
       ${b.fair ? `<div class="muted">PICK · CUOTA JUSTA <b class="cyan">${odds(b.fair)}</b>${b.closingFair ? ` · CIERRE <b class="cyan">${odds(b.closingFair)}</b> · CLV SELECCIÓN <b class="${cls(L.clvSel(b))}">${L.clvSel(b) == null ? '—' : spct(L.clvSel(b), 2)}</b> · PRECIO PAGADO <b class="${cls(L.clvPaid(b))}">${L.clvPaid(b) == null ? '—' : spct(L.clvPaid(b), 1)}</b> · CLV REAL <b class="${cls(b.clv)}">${spct(b.clv, 2)}</b>` : b.clvMissed ? ' · SIN CIERRE (APUNTADA CON EL PARTIDO EMPEZADO)' : b.pickId ? (b.commence && new Date(b.commence) <= new Date() ? ' · <span class="yellow">PARTIDO YA EMPEZADO: NO TENDRÁ CLV</span>' : ' · CLV AL EMPEZAR EL PARTIDO') : ''}</div>` : ''}
       <div id="legs"></div>
       <button type="button" class="small" id="addLeg" style="margin-top:2px">+ SELECCIÓN (COMBINADA)</button>
@@ -651,6 +654,7 @@
     }
     renderLegs(); refresh();
 
+    const tp = $('#toPick'); if (tp) tp.onclick = () => { closeSheet(); openPicks.add(b.pickId); pv.bet = ''; picksMode = 'all'; savePv(); if (tab === 'picks') render(); else go('picks'); };
     $('#addLeg').onclick = () => {
       if (b.legs.length === 1 && b.legs[0].odds == null && b.odds) b.legs[0].odds = b.odds;
       b.legs.push({ event: '', sel: '', odds: null });
@@ -722,7 +726,8 @@
   let picksMode = null, picksBusy = false, picksMsg = '', picksLoadedAt = 0, picksHelp = false;
   const ptxt = n => fnum(n, n % 1 ? (n * 10 % 1 ? 2 : 1) : 0);
   // Nombre completo de una selección según el mercado: h2h, totals (con su línea), dc, dnb o btts.
-  const OUT_NAME = (p, o, market, point) => market === 'dc' ? (o === '1X' ? `${p.home} o empate` : o === '12' ? `${p.home} o ${p.away}` : `${p.away} o empate`)
+  const OUT_NAME = (p, o, market, point) => market === 'corners' || market === 'cards' ? `${market === 'corners' ? 'Córners' : 'Tarjetas'}: ${o === 'O' ? 'Más' : 'Menos'} ${ptxt(point)}`
+    : market === 'dc' ? (o === '1X' ? `${p.home} o empate` : o === '12' ? `${p.home} o ${p.away}` : `${p.away} o empate`)
     : market === 'dnb' ? `${o === '1' ? p.home : p.away} (empate nula)`
     : market === 'btts' ? `Ambos marcan: ${o === 'Y' ? 'sí' : 'no'}`
     : o === '1' ? p.home : o === '2' ? p.away : o === 'X' ? 'Empate'
@@ -736,7 +741,12 @@
     const nb = prob['1'] + prob['2'], dnb = { '1': prob['1'] / nb, '2': prob['2'] / nb };
     return { dc: { fair_prob: dc, fair_odds: toOddsMap(dc) }, dnb: { fair_prob: dnb, fair_odds: toOddsMap(dnb) } };
   };
-  const mkFor = (p, market, pt) => market === 'h2h' ? p
+  // Córners y tarjetas: líneas del modelo propio (p.cc) con el mismo formato que los demás mercados.
+  const ccMk = (p, market, pt) => {
+    const l = p.cc && p.cc[market] && p.cc[market].lines.find(x => +x.line === +pt);
+    return l ? { point: l.line, fair_odds: { O: l.fairOver, U: l.fairUnder }, fair_prob: { O: l.over / 100, U: l.under / 100 }, fair_src: ['modelo propio'], captured_at: p.cc.at } : null;
+  };
+  const mkFor = (p, market, pt) => market === 'corners' || market === 'cards' ? ccMk(p, market, pt) : market === 'h2h' ? p
     : market === 'totals' ? (p.totals && +p.totals.point === +pt ? p.totals : ((p.extras && p.extras.lines) || []).find(l => +l.point === +pt))
     : market === 'btts' ? (p.extras && p.extras.btts) : (deriveMk(p.fair_prob) || {})[market];
   const OUT_ORDER = ['1', 'X', '2'];
@@ -785,7 +795,7 @@
       soft: derived ? (dsp && dsp[market] ? dsp[market].fair_prob[o] : null) : (sp ? sp[o] : null),
       model: md && md.fair_prob ? md.fair_prob[o] : null,
       hours: isFinite(hours) ? hours : null,
-      kind: market === 'btts' || (market === 'totals' && p.totals && +p.totals.point !== +pt) ? 'extra' : 'main',
+      kind: market === 'btts' || market === 'corners' || market === 'cards' || (market === 'totals' && p.totals && +p.totals.point !== +pt) ? 'extra' : 'main',
       move: market === 'h2h' ? moveOf(p, o) : null,
       edge: odd / mk.fair_odds[o] - 1
     };
@@ -912,7 +922,7 @@
     : market === 'dc' ? (o === '1X' ? p.home.toUpperCase() + ' O X' : o === '12' ? 'CUALQUIERA' : 'X O ' + p.away.toUpperCase())
     : market === 'dnb' ? (o === '1' ? p.home : p.away).toUpperCase()
     : market === 'btts' ? (o === 'Y' ? 'SÍ' : 'NO') : OUT_NAME(p, o, market, point).toUpperCase();
-  const MK_KEYS = { totals: ['O', 'U'], btts: ['Y', 'N'], dc: ['1X', '12', 'X2'], dnb: ['1', '2'] };
+  const MK_KEYS = { corners: ['O', 'U'], cards: ['O', 'U'], totals: ['O', 'U'], btts: ['Y', 'N'], dc: ['1X', '12', 'X2'], dnb: ['1', '2'] };
 
   function pickCells(p, mk, market, thr, compact) {
     const keys = MK_KEYS[market] || outKeys(mk.fair_prob), pt = mk.point != null ? mk.point : null;
@@ -1015,6 +1025,7 @@
     if (d) { add('dc', d.dc); add('dnb', d.dnb); }
     if (p.totals) add('totals', p.totals, p.totals.point);
     if (p.extras) { (p.extras.lines || []).forEach(l => add('totals', l, l.point)); add('btts', p.extras.btts); }
+    if (p.cc) ['corners', 'cards'].forEach(m => p.cc[m].lines.forEach(l => add(m, ccMk(p, m, l.line), l.line)));
     return `<div class="pksec">COMPROBAR CUOTA DE BET365 O SUPERCUOTA</div>
       <div class="ckbox" data-ck="${esc(p.id)}"><div class="row" style="gap:6px;margin-top:8px">
         <select class="grow">${opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select>
@@ -1118,7 +1129,7 @@
         <div class="pkhead" data-toggle="${esc(p.id)}">
           <div class="grow" style="min-width:0"><div class="ellipsis"><b>${esc(p.home)} – ${esc(p.away)}</b></div>
             <div class="muted ellipsis">${when} · ${sportEmoji(p.sport_key)} ${esc(p.league)}</div></div>
-          ${my.length ? `<span class="tag mine" title="Ya apostado">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO</span>` : ''}
+          ${my.length ? `<span class="tag mine" data-openbet="${my[0].id}" title="Ya apostado: toca para ver la apuesta">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO</span>` : ''}
           ${ve != null ? `<span class="tag P pktag" title="${esc(vl[0].label)}">⭐ ${esc(vl[0].label.length > 12 ? vl[0].label.slice(0, 11) + '…' : vl[0].label)} +${fnum(ve * 100, 0)}%${Math.abs(vl[0].move) >= 0.02 ? (vl[0].move > 0 ? ' ↑' : ' ↓') + Math.round(Math.abs(vl[0].move) * 100) : ''}</span>` : ''}
           <span class="muted">${open ? '▲' : '▼'}</span>
         </div>
@@ -1151,6 +1162,7 @@
     view.querySelectorAll('[data-toggle]').forEach(h => h.onclick = () => {
       const id = h.dataset.toggle; if (openPicks.has(id)) openPicks.delete(id); else openPicks.add(id); render();
     });
+    view.querySelectorAll('[data-openbet]').forEach(el => el.onclick = ev => { ev.stopPropagation(); const b = S.get(el.dataset.openbet); if (b) openBet(b); });
     view.querySelectorAll('[data-extras]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadExtras(b.dataset.extras); });
     view.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
       const p = (pickCache.picks || []).find(x => x.id === b.dataset.pick);
@@ -1181,6 +1193,7 @@
           <div class="muted hint" style="margin-top:6px">${conf.why.slice(0, 4).map(w => `<span class="${w.d > 0 ? 'pos' : 'neg'}">${w.d > 0 ? '+' : '−'}${Math.abs(w.d)}</span> ${esc(w.txt)}`).join('<br>')}</div>
           ${hasLv ? '' : `<div style="margin-top:6px;font:400 12px/1.5 var(--sans)">Si apuestas igualmente: <b>NIVEL 1</b> <span class="muted">(${eur(minStake)})</span>, el mínimo. No hay ventaja que justifique más.</div>`}
           ${sg ? `<div class="muted hint" style="margin-top:6px">Probabilidad prudente ${pct(sg.pc, 1)} (mercado ${pct(ci.p, 1)}): con menos confianza se asume menos.${hasLv ? ` Tope de nivel ${sg.cap} por confianza ${conf.label.toLowerCase()}.` : ''} Precio frente a la justa ${spct(odd / fair - 1, 1)}${sa.v ? ` · tu selección ${spct(sa.v, 2)}` : ''}.</div>` : ''}
+          ${market === 'corners' || market === 'cards' ? '<div class="hint" style="margin-top:6px;color:var(--yellow)">Probabilidad de tu modelo propio, sin precio de mercado de referencia: confirma árbitro, bajas y motivación antes de apostar.</div>' : ''}
           ${ci.edge > 0.08 ? '<div class="hint" style="margin-top:6px;color:var(--yellow)">Cuota muy por encima de la justa: si es una supercuota, perfecto; si no, comprueba que es la misma selección y mercado (90 minutos) antes de apostar.</div>' : ''}`;
         out.querySelector('[data-ckbet]').onclick = () => betFromPick(p, market, o, pt || undefined, odd, hasLv ? { level: sg.level, label: conf.label, score: conf.score } : { level: 1, label: conf.label, score: conf.score, noValue: true });
       };
@@ -1195,10 +1208,11 @@
     const mk = mkFor(p, market, pt);
     if (!mk) return;
     const sp = sportOf(p.sport_key);
-    openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o, market, pt != null ? +pt : null), league: p.league, fair: L.r2(mk.fair_odds[o]), pickId: p.id, outcome: o,
+    const isCC = market === 'corners' || market === 'cards';     // sin pickId: el servidor no los cierra solo ni calcula su CLV
+    openBet(null, { event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o, market, pt != null ? +pt : null), league: p.league, fair: L.r2(mk.fair_odds[o]), pickId: isCC ? null : p.id, outcome: o,
       commence: p.commence_time, sport: sportEmoji(p.sport_key), market, point: market === 'totals' ? +pt : null, odds: odd || null, sugg: sugg || null,
       snap: { home: p.home, away: p.away, league: p.league, probs: p.fair_prob, src: p.fair_src || ['pinnacle'], at: p.captured_at },
-      type: market === 'totals' ? 'Goles' : market === 'btts' ? 'Ambos marcan' : market === 'dc' ? 'Doble oportunidad' : market === 'dnb' ? 'Empate no vale' : sp === 'soccer' ? '1X2' : 'Ganador' });
+      type: market === 'corners' ? 'Córners' : market === 'cards' ? 'Tarjetas' : market === 'totals' ? 'Goles' : market === 'btts' ? 'Ambos marcan' : market === 'dc' ? 'Doble oportunidad' : market === 'dnb' ? 'Empate no vale' : sp === 'soccer' ? '1X2' : 'Ganador' });
   }
   const ckState = {};
 
@@ -1580,7 +1594,7 @@
         ${fv.bands.map(x => `<tr><td>${pct(x.lo, 0)}–${pct(Math.min(x.hi, 1), 0)}<div class="muted">${odds(1 / Math.min(x.hi, 1))}–${odds(1 / x.lo)}</div></td><td class="num">${x.n}</td><td class="num ${cls(x.hit - x.exp)}">${pct(x.hit, 0)}<div class="muted">${(x.hit ? odds(1 / x.hit) : '—')}</div></td><td class="num">${pct(x.exp, 0)}<div class="muted">${odds(1 / x.exp)}</div></td></tr>`).join('')}</table>`)}
         <div class="muted hint" style="margin-top:6px">Si «real» queda por debajo de «esper.» de forma sostenida, los favoritos de ese tramo te están fallando más de lo que dice el mercado.</div></div>
       <h2>FALLOS · DEL MÁS AL MENOS PROBABLE</h2>
-      <div class="card">${fv.fails.length ? fv.fails.slice(0, 30).map(x => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line2)"><div class="grow"><div class="ellipsis">${esc(selText(x.b))}</div><div class="muted ellipsis">${fdate(x.b.date)} · ${pct(x.p, 0)} (justa ${odds(1 / x.p)}) · tú @${odds(x.b.odds)}</div></div><div class="num neg">${seur(x.pl)}</div></div>`).join('') : '<div class="muted hint">Ningún fallo todavía.</div>'}</div>` : ''}`;
+      <div class="card">${fv.fails.length ? fv.fails.slice(0, 30).map(x => `<div class="row" data-openbet="${x.b.id}" style="padding:6px 0;border-bottom:1px solid var(--line2);cursor:pointer"><div class="grow"><div class="ellipsis">${esc(selText(x.b))}</div><div class="muted ellipsis">${fdate(x.b.date)} · ${pct(x.p, 0)} (justa ${odds(1 / x.p)}) · tú @${odds(x.b.odds)}</div></div><div class="num neg">${seur(x.pl)}</div></div>`).join('') : '<div class="muted hint">Ningún fallo todavía.</div>'}</div>` : ''}`;
 
     const secClv = `
       <h2>CLV · <span class="acc">¿FUNCIONA EL SISTEMA?</span></h2>
@@ -1856,6 +1870,8 @@
       <h2>CONEXIÓN · THE ODDS API Y TELEGRAM</h2>
       <div class="card"><div id="conn" class="muted">PULSA COMPROBAR PARA VER EL ESTADO.</div>
         <div class="row" style="margin-top:8px;gap:6px"><button class="small" id="chk">COMPROBAR</button><button class="small" id="chat">DETECTAR MI CHAT_ID</button><button class="small" id="chkFb">COMPROBAR FÚTBOL</button></div>
+        <label>PROYECTO DE CLAUDE (ENLACE) · PARA ✦ ANALIZAR CON CLAUDE</label>
+        <input id="claudeProj" placeholder="https://claude.ai/project/…" value="${esc(st.claudeProject || '')}">
         <div class="muted hint" style="margin-top:8px">Fútbol = API-Football: da córners, tarjetas y goles con minuto para la ficha de cada apuesta.</div></div>`)}
       ${page('data', `
       <h2>COPIA DE SEGURIDAD</h2>
@@ -1925,6 +1941,7 @@
     view.querySelector('#chk').onclick = checkConnection;
     view.querySelector('#chat').onclick = detectChat;
     view.querySelector('#chkFb').onclick = checkFootball;
+    view.querySelector('#claudeProj').onchange = ev => { const v = ev.target.value.trim(); if (v === '' || /^https:\/\/claude\.ai\/project\//.test(v)) { saveSettings({ claudeProject: v.split('?')[0] }); toast('GUARDADO'); } else { toast('Debe empezar por https://claude.ai/project/'); render(); } };
     view.querySelector('#toCash').onclick = () => go('cash');
     view.querySelector('#csvBets').onclick = exportBetsCsv;
     view.querySelector('#csvMoves').onclick = exportMovesCsv;
