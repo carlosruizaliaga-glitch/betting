@@ -231,7 +231,7 @@ def export_app(out, pal='amarillo', fn=None):
     frame(d, p)
     fn(big, p)
     i512 = big.resize((512, 512), Image.LANCZOS)
-    i512.save(os.path.join(out, 'icon-512.png'))
+    i512.save(os.path.join(out, 'icon-512.png'))  # la app usa copias con sufijo de versión (icon-512-b4.png…) para forzar el cambio en el móvil
     i512.resize((192, 192), Image.LANCZOS).save(os.path.join(out, 'icon-192.png'))
     # 180 para iPhone: sin transparencia (iOS pone su propia máscara)
     flat = tile(p)

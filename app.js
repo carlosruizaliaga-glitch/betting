@@ -258,7 +258,7 @@
 
   // ---------- Entrada con código ----------
   async function renderLogin() {
-    view.innerHTML = `<div class="login"><img src="icon-512.png" alt=""><h1>BETTING</h1>
+    view.innerHTML = `<div class="login"><img src="icon-512-b4.png" alt=""><h1>BETTING</h1>
       <div class="muted">REGISTRO DE APUESTAS</div><div class="card" id="loginCard"><div class="muted">Conectando…</div></div></div>`;
     const card = view.querySelector('#loginCard');
     let serverState;

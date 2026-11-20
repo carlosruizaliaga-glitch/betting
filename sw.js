@@ -1,6 +1,6 @@
 // Service worker: guarda la app en caché para que funcione sin conexión.
-const CACHE = 'betting-v96';
-const FILES = ['./', 'index.html', 'app.js', 'logic.js', 'store.js', 'version.js', 'manifest.webmanifest', 'favicon.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable.png'];
+const CACHE = 'betting-v97';
+const FILES = ['./', 'index.html', 'app.js', 'logic.js', 'store.js', 'version.js', 'manifest.webmanifest', 'favicon-b4.png', 'icon-180-b4.png', 'icon-192-b4.png', 'icon-512-b4.png', 'icon-maskable-b4.png'];
 const FONTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', e => {
