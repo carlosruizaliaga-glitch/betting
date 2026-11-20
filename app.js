@@ -4,7 +4,7 @@
 
   const DEFAULT_SETTINGS = {
     id: 'settings', books: ['bet365'], sports: ['⚽'], types: ['1X2', 'Combinada'], tipsters: ['Carlos'], leagues: [],
-    unit: 1, kelly: 0.25, myBooks: [], clvMode: 'sel', theme: 'auto', fontSize: 'm', lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: [], autoSend: { on: false, time: '10:00' }
+    unit: 1, kelly: 0.25, myBooks: [], clvMode: 'sel', theme: 'auto', fontSize: 'm', palette: 'icono', lossWeek: null, lossMonth: null, threshold: 3, sendMode: 'value', devig: 'power', scan: [], autoSend: { on: false, time: '10:00' }
   };
 
   // ---------- Acceso a datos ----------
@@ -213,9 +213,10 @@
   function applyLook() {
     const st = settings(), th = st.theme === 'light' ? 'light' : st.theme === 'dark' ? 'dark' : (darkQuery && !darkQuery.matches ? 'light' : 'dark');
     const root = document.documentElement;
-    if (root.dataset.theme !== th) {
-      root.dataset.theme = th;
-      const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', th === 'light' ? '#f2f6f5' : '#0f1e20');
+    const pal = st.palette === 'clasico' ? 'clasico' : 'icono';
+    if (root.dataset.theme !== th || root.dataset.palette !== pal) {
+      root.dataset.theme = th; root.dataset.palette = pal;
+      const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim() || '#141311');
     }
     const z = { s: '0.92', l: '1.1' }[st.fontSize] || '1';
     if (root.style.zoom !== z) root.style.zoom = z === '1' ? '' : z;
@@ -1898,7 +1899,7 @@
         </div>
         <h2>SISTEMA</h2>
         <div class="mlist">
-          ${item('look', icon('sliders'), 'APARIENCIA', `TEMA ${({ auto: 'AUTOMÁTICO', dark: 'OSCURO', light: 'CLARO' })[st.theme || 'auto']} · LETRA ${({ s: 'PEQUEÑA', m: 'NORMAL', l: 'GRANDE' })[st.fontSize || 'm']}`)}
+          ${item('look', icon('sliders'), 'APARIENCIA', `TEMA ${({ auto: 'AUTOMÁTICO', dark: 'OSCURO', light: 'CLARO' })[st.theme || 'auto']} · ${st.palette === 'clasico' ? 'CLÁSICO' : 'COLORES DEL ICONO'} · LETRA ${({ s: 'PEQUEÑA', m: 'NORMAL', l: 'GRANDE' })[st.fontSize || 'm']}`)}
           ${item('conn', icon('plug'), 'CONEXIÓN', 'THE ODDS API Y TELEGRAM')}
           ${item('data', icon('save'), 'COPIA DE SEGURIDAD', 'EXCEL, COPIA COMPLETA E IMPORTAR')}
         </div>
@@ -1968,6 +1969,9 @@
       <h2>TEMA</h2>
       <div class="card"><div class="seg">${[['auto', 'AUTOMÁTICO'], ['dark', 'OSCURO'], ['light', 'CLARO']].map(([k, t]) => `<button data-look="theme:${k}" class="${(st.theme || 'auto') === k ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="muted hint" style="margin-top:8px">Automático sigue el modo del móvil. El claro se lee mejor con mucha luz.</div></div>
+      <h2>COLORES</h2>
+      <div class="card"><div class="seg">${[['icono', 'DEL ICONO'], ['clasico', 'CLÁSICO (VERDE)']].map(([k, t]) => `<button data-look="palette:${k}" class="${(st.palette || 'icono') === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+        <div class="muted hint" style="margin-top:8px">Del icono: negro, amarillo y rojo. Clásico: el verde de antes.</div></div>
       <h2>TAMAÑO DE LETRA</h2>
       <div class="card"><div class="seg">${[['s', 'PEQUEÑA'], ['m', 'NORMAL'], ['l', 'GRANDE']].map(([k, t]) => `<button data-look="fontSize:${k}" class="${(st.fontSize || 'm') === k ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="muted hint" style="margin-top:8px">Cambia el tamaño de toda la app a la vez.</div></div>`)}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f1e20">
+  <meta name="theme-color" content="#141311">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -33,6 +33,7 @@
       --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       --shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 8px 22px rgba(0, 0, 0, .35);
       --ac: #43e8c0;                       /* único color de acento */
+      --brand: #43e8c0; --on-brand: #06201b;
     }
     :root[data-theme="light"] { --ac: #0a8f6f; }
     /* Modo claro (Ajustes → Apariencia): mismos colores de significado, más oscuros para leer sobre fondo claro */
@@ -48,12 +49,39 @@
     }
     :root[data-theme="light"] body { background: radial-gradient(120% 55% at 50% -10%, rgba(10, 143, 111, .07) 0%, rgba(242, 246, 245, 0) 60%) fixed, var(--bg); }
     :root[data-theme="light"] header { background: rgba(242, 246, 245, .85); }
-    :root[data-theme="light"] button.primary, :root[data-theme="light"] .fab { color: #fff; }
+    :root[data-theme="light"] { --brand: #0a8f6f; --on-brand: #ffffff; }
     :root[data-theme="light"] .sheet::before { background: rgba(20, 32, 31, .18); }
     :root[data-theme="light"] input[type=date], :root[data-theme="light"] input[type=time] { color-scheme: light; }
     :root[data-theme="light"] .overlay { background: rgba(20, 32, 31, .4); }
     :root[data-theme="light"] .pk.val, :root[data-theme="light"] .pkc.val { background: var(--pos-soft); border-color: rgba(10, 143, 111, .55); }
     :root[data-theme="light"] nav.tabs { background: rgba(255, 255, 255, .92); }
+    /* Paleta "icono" (por defecto, 20/11/2026): negro cálido, amarillo y rojo del icono. "Clásico" vuelve al verde. */
+    :root:not([data-palette="clasico"]) {
+      --bg: #141311; --card: #201e1b; --card2: #1a1916; --raise: #2d2a26; --text: #f7f1e6; --muted: #b7ad9e; --faint: #8c8478;
+      --line: #36322c; --line2: #292622;
+      --ac: #ffd23f; --brand: #ffd23f; --on-brand: #1a1816;
+      --cyan: #ffd23f; --cyan-soft: rgba(255, 210, 63, .14);
+      --yellow: #ff9f43; --yellow-soft: rgba(255, 159, 67, .14);
+      --neg: #ff5a63; --neg-soft: rgba(255, 90, 99, .13);
+      --shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 8px 22px rgba(0, 0, 0, .4);
+    }
+    :root[data-theme="light"]:not([data-palette="clasico"]) {
+      --bg: #f7f2e8; --card: #fffdf8; --card2: #f3ede2; --raise: #e9e1d2; --text: #1a1816; --muted: #675f53; --faint: #958b7c;
+      --line: #e0d6c5; --line2: #ece4d6;
+      --ac: #a87a00; --brand: #ffd23f; --on-brand: #1a1816;
+      --cyan: #8a6400; --cyan-soft: rgba(255, 196, 0, .2);
+      --yellow: #c05f00; --yellow-soft: rgba(230, 120, 0, .13);
+      --neg: #d32f3a; --neg-soft: rgba(211, 47, 58, .1);
+      --shadow: 0 1px 2px rgba(26, 24, 22, .08), 0 6px 16px rgba(26, 24, 22, .08);
+    }
+    :root:not([data-palette="clasico"]) .chips button.on { background: color-mix(in srgb, var(--brand) 18%, transparent); border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+    :root:not([data-palette="clasico"]) header { background: color-mix(in srgb, var(--bg) 85%, transparent); }
+    :root:not([data-palette="clasico"]) nav.tabs button.active { color: var(--text); background: color-mix(in srgb, var(--brand) 26%, transparent); }
+    :root:not([data-palette="clasico"]) nav.tabs button.active .ic { color: var(--ac); }
+    :root:not([data-palette="clasico"]) .pk.val, :root:not([data-palette="clasico"]) .pkc.val { border-color: color-mix(in srgb, var(--brand) 70%, transparent); background: color-mix(in srgb, var(--brand) 13%, transparent); }
+    :root:not([data-palette="clasico"]) .pk.val .o, :root:not([data-palette="clasico"]) .pkc.val .o { color: var(--ac); }
+    :root:not([data-palette="clasico"]) .pk.fav, :root:not([data-palette="clasico"]) .pkc.fav { border-color: color-mix(in srgb, var(--text) 35%, transparent); }
+    :root:not([data-palette="clasico"]) .pk.fav .o, :root:not([data-palette="clasico"]) .pkc.fav .o { color: var(--text); }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
     body { padding-bottom: calc(150px + env(safe-area-inset-bottom));
@@ -117,7 +145,7 @@
     button { font: 600 13px/1.2 var(--sans); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 12px 14px; cursor: pointer;
       background: var(--raise); color: var(--text); letter-spacing: .02em; transition: transform .08s, background .15s; }
     button:active { transform: scale(.98); }
-    button.primary { background: var(--pos); border-color: transparent; color: #06201b; font-weight: 700;
+    button.primary { background: var(--brand); border-color: transparent; color: var(--on-brand); font-weight: 700;
       box-shadow: 0 6px 18px rgba(67, 232, 192, .22); }
     button.danger { color: var(--neg); border-color: rgba(255, 107, 107, .35); background: var(--neg-soft); }
     button.small { padding: 7px 12px; font-size: 12px; border-radius: 999px; }
@@ -132,7 +160,7 @@
     .btn-v { color: var(--muted); }
     /* Botón flotante "+" (estilo WhatsApp): abajo a la derecha, encima de la barra, siempre visible al hacer scroll. */
     .fab { position: fixed; right: max(18px, calc((100% - 680px) / 2 + 18px)); bottom: calc(86px + env(safe-area-inset-bottom)); width: 56px; height: 56px; border-radius: 18px;
-      font-size: 30px; line-height: 1; padding: 0; background: var(--ac); border: 0; color: #06201b; z-index: 8; font-weight: 600;
+      font-size: 30px; line-height: 1; padding: 0; background: var(--brand); border: 0; color: var(--on-brand); z-index: 8; font-weight: 600;
       box-shadow: 0 10px 28px color-mix(in srgb, var(--ac) 35%, transparent), 0 2px 8px rgba(0, 0, 0, .7); transition: transform .12s; }
     .fab:active { transform: scale(.92); }
     nav.tabs { position: fixed; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 7; display: grid; grid-template-columns: repeat(5, 1fr);
@@ -372,9 +400,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=97"></script>
-  <script src="logic.js?v=97"></script>
-  <script src="store.js?v=97"></script>
-  <script src="app.js?v=97"></script>
+  <script src="version.js?v=99"></script>
+  <script src="logic.js?v=99"></script>
+  <script src="store.js?v=99"></script>
+  <script src="app.js?v=99"></script>
 </body>
 </html>
