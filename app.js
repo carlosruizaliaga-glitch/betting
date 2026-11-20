@@ -213,7 +213,7 @@
   function applyLook() {
     const st = settings(), th = st.theme === 'light' ? 'light' : st.theme === 'dark' ? 'dark' : (darkQuery && !darkQuery.matches ? 'light' : 'dark');
     const root = document.documentElement;
-    const pal = st.palette === 'clasico' ? 'clasico' : 'icono';
+    const pal = ['clasico', 'tapete', 'burdeos', 'grafito'].includes(st.palette) ? st.palette : 'icono';
     if (root.dataset.theme !== th || root.dataset.palette !== pal) {
       root.dataset.theme = th; root.dataset.palette = pal;
       const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim() || '#141311');
@@ -464,7 +464,7 @@
     const axisLines = proj.length ? hline(lo, 'var(--line)', '') : refs.length ? refs.map(r => hline(r.v, r.col || 'var(--line)', r.label, r.col)).join('')
       : hline(hi, 'var(--line)', opts.axis(hi)) + hline(lo, 'var(--line)', opts.axis(lo));
     return `<div class="chart" data-chart="${opts.id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label)}">
-      <defs><linearGradient id="gA-${opts.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#43e8c0" stop-opacity=".22"/><stop offset="1" stop-color="#43e8c0" stop-opacity="0"/></linearGradient></defs>
+      <defs><linearGradient id="gA-${opts.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--pos)" stop-opacity=".22"/><stop offset="1" style="stop-color:var(--pos)" stop-opacity="0"/></linearGradient></defs>
       ${axisLines}
       ${opts.area ? `<path d="${d} L${lastSolid.x.toFixed(1)} ${H - pb} L${pl} ${H - pb} Z" fill="url(#gA-${opts.id})"/>` : ''}
       <path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>
@@ -1899,7 +1899,7 @@
         </div>
         <h2>SISTEMA</h2>
         <div class="mlist">
-          ${item('look', icon('sliders'), 'APARIENCIA', `TEMA ${({ auto: 'AUTOMÁTICO', dark: 'OSCURO', light: 'CLARO' })[st.theme || 'auto']} · ${st.palette === 'clasico' ? 'CLÁSICO' : 'COLORES DEL ICONO'} · LETRA ${({ s: 'PEQUEÑA', m: 'NORMAL', l: 'GRANDE' })[st.fontSize || 'm']}`)}
+          ${item('look', icon('sliders'), 'APARIENCIA', `TEMA ${({ auto: 'AUTOMÁTICO', dark: 'OSCURO', light: 'CLARO' })[st.theme || 'auto']} · ${({ icono: 'COLORES DEL ICONO', tapete: 'TAPETE', burdeos: 'BURDEOS', grafito: 'GRAFITO', clasico: 'CLÁSICO' })[st.palette || 'icono'] || 'COLORES DEL ICONO'} · LETRA ${({ s: 'PEQUEÑA', m: 'NORMAL', l: 'GRANDE' })[st.fontSize || 'm']}`)}
           ${item('conn', icon('plug'), 'CONEXIÓN', 'THE ODDS API Y TELEGRAM')}
           ${item('data', icon('save'), 'COPIA DE SEGURIDAD', 'EXCEL, COPIA COMPLETA E IMPORTAR')}
         </div>
@@ -1970,8 +1970,9 @@
       <div class="card"><div class="seg">${[['auto', 'AUTOMÁTICO'], ['dark', 'OSCURO'], ['light', 'CLARO']].map(([k, t]) => `<button data-look="theme:${k}" class="${(st.theme || 'auto') === k ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="muted hint" style="margin-top:8px">Automático sigue el modo del móvil. El claro se lee mejor con mucha luz.</div></div>
       <h2>COLORES</h2>
-      <div class="card"><div class="seg">${[['icono', 'DEL ICONO'], ['clasico', 'CLÁSICO (VERDE)']].map(([k, t]) => `<button data-look="palette:${k}" class="${(st.palette || 'icono') === k ? 'on' : ''}">${t}</button>`).join('')}</div>
-        <div class="muted hint" style="margin-top:8px">Del icono: negro, amarillo y rojo. Clásico: el verde de antes.</div></div>
+      <div class="card"><div class="palg">${[['icono', 'Icono', '#141311', '#ffd23f', '#a5d65a'], ['tapete', 'Tapete', '#0d1f17', '#e8c25a', '#7ed67a'], ['burdeos', 'Burdeos', '#1a0f12', '#f0b85a', '#9bd37a'], ['grafito', 'Grafito', '#121417', '#f1f3f5', '#5fd38d'], ['clasico', 'Clásico', '#0f1e20', '#43e8c0', '#43e8c0']]
+          .map(([k, t, c1, c2, c3]) => `<button data-look="palette:${k}" class="${(st.palette || 'icono') === k ? 'on' : ''}"><span class="sw"><i style="background:${c1}"></i><i style="background:${c2}"></i><i style="background:${c3}"></i></span>${t}</button>`).join('')}</div>
+        <div class="muted hint" style="margin-top:8px">Cada paleta tiene su versión oscura y clara, y los colores de ganado, medio y perdido ajustados para que cuadren.</div></div>
       <h2>TAMAÑO DE LETRA</h2>
       <div class="card"><div class="seg">${[['s', 'PEQUEÑA'], ['m', 'NORMAL'], ['l', 'GRANDE']].map(([k, t]) => `<button data-look="fontSize:${k}" class="${(st.fontSize || 'm') === k ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="muted hint" style="margin-top:8px">Cambia el tamaño de toda la app a la vez.</div></div>`)}
