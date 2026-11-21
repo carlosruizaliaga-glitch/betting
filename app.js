@@ -1020,23 +1020,30 @@
   let ccRunning = false;
   async function autoCC(baseMsg) {
     if (ccRunning) return;
-    const list = (pickCache.picks || []).filter(p => /^soccer/.test(p.sport_key || ''));
+    // Solo ligas con datos en football-data.co.uk (no Champions, Europa League ni selecciones) y sin cálculo reciente.
+    const fresh = p => p.cc && p.cc.at && Date.now() - new Date(p.cc.at).getTime() < 6 * 3600e3;
+    const list = (pickCache.picks || []).filter(p => /^soccer/.test(p.sport_key || '') && !/uefa|nations|world|euro/.test(p.sport_key) && !fresh(p)).map(p => p.id);
     if (!list.length) return;
     ccRunning = true;
-    let done = 0, ok = 0;
+    let done = 0;
+    const got = {};
+    // Los picks se recargan solos cada minuto: se aplican al final sobre la lista actual (no sobre objetos antiguos).
+    const apply = () => (pickCache.picks || []).forEach(p => { if (got[p.id]) p.cc = got[p.id]; });
     const next = async () => {
       while (list.length) {
-        const p = list.shift();
+        const id = list.shift();
         try {
-          const r = await S.callCards({ action: 'cards', pickId: p.id });
-          if (r && r.cc) { p.cc = r.cc; ok++; }
+          const r = await S.callCards({ action: 'cards', pickId: id });
+          if (r && r.cc) got[id] = r.cc;
         } catch (e) { /* sin conexión: se puede calcular a mano en cada partido */ }
         done++;
-        if (!picksBusy && done % 5 === 0) { picksMsg = baseMsg + ` · CALCULANDO TARJETAS Y CÓRNERS (${done})…`; render(); }
+        if (!picksBusy && done % 5 === 0) { apply(); picksMsg = baseMsg + ` · CALCULANDO TARJETAS Y CÓRNERS (${done})…`; render(); }
       }
     };
-    await Promise.all([next(), next(), next()]);
+    await Promise.all([next(), next(), next(), next()]);
     ccRunning = false;
+    const ok = Object.keys(got).length;
+    apply();
     if (ok) savePicks({ picks: pickCache.picks });
     if (!picksBusy) { picksMsg = baseMsg + (ok ? ` · TARJETAS Y CÓRNERS CALCULADOS EN ${ok} PARTIDOS (SIN COSTE)` : ''); render(); }
   }
