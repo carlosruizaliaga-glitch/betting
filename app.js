@@ -1010,9 +1010,35 @@
         (send ? (r.tgError ? ` · ⛔ ${errText(r.tgError)}` : ` · ✓ ENVIADO A TELEGRAM (${r.sent} MENSAJE${r.sent === 1 ? '' : 'S'})`) : '') +
         (off.length ? ` · SIN DATOS: ${off.join(', ')}` : '');
       render();
+      autoCC(picksMsg);
     } catch (e) {
       picksBusy = false; picksMsg = '⛔ Sin conexión. Inténtalo de nuevo.'; render();
     }
+  }
+
+  // Tras BUSCAR: calcula tarjetas y córners de todos los partidos de fútbol (sin coste: no usa créditos ni consultas).
+  let ccRunning = false;
+  async function autoCC(baseMsg) {
+    if (ccRunning) return;
+    const list = (pickCache.picks || []).filter(p => /^soccer/.test(p.sport_key || ''));
+    if (!list.length) return;
+    ccRunning = true;
+    let done = 0, ok = 0;
+    const next = async () => {
+      while (list.length) {
+        const p = list.shift();
+        try {
+          const r = await S.callCards({ action: 'cards', pickId: p.id });
+          if (r && r.cc) { p.cc = r.cc; ok++; }
+        } catch (e) { /* sin conexión: se puede calcular a mano en cada partido */ }
+        done++;
+        if (!picksBusy && done % 5 === 0) { picksMsg = baseMsg + ` · CALCULANDO TARJETAS Y CÓRNERS (${done})…`; render(); }
+      }
+    };
+    await Promise.all([next(), next(), next()]);
+    ccRunning = false;
+    if (ok) savePicks({ picks: pickCache.picks });
+    if (!picksBusy) { picksMsg = baseMsg + (ok ? ` · TARJETAS Y CÓRNERS CALCULADOS EN ${ok} PARTIDOS (SIN COSTE)` : ''); render(); }
   }
 
   // Preferencias de la pantalla PICKS (solo en este móvil; si no se pueden guardar, se usan las de por defecto).
