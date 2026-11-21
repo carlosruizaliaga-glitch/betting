@@ -223,3 +223,19 @@ console.log('OK · cerradas', s.n, '(' + s.w + 'G/' + s.l + 'P) · stake', s.ris
   assert(fs.bands.length >= 2 && fs.bands.reduce((a, x) => a + x.n, 0) === 4);
   console.log('OK · favoritos que fallan');
 }
+
+{
+  // Simulador de estrategias
+  const mv = [{ id: 'd', date: '2026-10-01', type: 'deposit', amount: 100, created: 0 }];
+  const S = (n, odds, fair, result, stake) => ({ id: 's' + n, date: '2026-10-0' + n, created: n, stake, odds, fair, result, legs: [{ sel: 'X', odds }] });
+  const bs = [S(1, 2.2, 2.0, 'W', 10), S(2, 1.9, 2.0, 'L', 4), S(3, 2.1, 2.0, 'L', 6), S(4, 3.0, 2.5, 'W', 2)];
+  const st = L.strategies(bs, mv, { thr: 0.03, kelly: 0.25 });
+  const g = k => st.find(x => x.key === k);
+  assert.strictEqual(g('real').profit, 12 - 4 - 6 + 4);
+  assert.strictEqual(g('flat').n, 4); assert(Math.abs(g('flat').profit - (5.5 * 1.2 - 5.5 - 5.5 + 5.5 * 2)) < 0.02);
+  assert.strictEqual(g('value').n, 3);                          // la de 1,90 con justa 2,00 no tiene valor
+  assert.strictEqual(g('value5').n, 3);
+  assert(g('kelly').n === 3 && g('kelly').staked > 0);
+  assert.deepStrictEqual(L.strategies([], mv), []);
+  console.log('OK · simulador de estrategias');
+}

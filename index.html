@@ -405,6 +405,15 @@
     .palg button.on { border-color: var(--ac); box-shadow: inset 0 0 0 1px var(--ac); }
     .palg .sw { display: flex; gap: 0; border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
     .palg .sw i { display: block; width: 16px; height: 16px; }
+    .lock { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: grid; place-items: center; }
+    .lockbox { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 260px; }
+    .lockbox img { width: 64px; height: 64px; border-radius: 16px; }
+    .lockbox b { letter-spacing: .14em; }
+    .lock .dots { display: flex; gap: 14px; margin: 6px 0 8px; } .lock .dots i { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--muted); }
+    .lock .dots i.on { background: var(--brand); border-color: var(--brand); } .lock .dots.bad i { border-color: var(--neg); background: var(--neg); }
+    .lock .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+    .lock .keys button { padding: 16px 0; font-size: 20px; border-radius: 16px; background: var(--card); }
+    .lock .keys button:disabled { visibility: hidden; }
     details.vt { margin-top: 6px; }
     details.vt summary { cursor: pointer; color: var(--muted); font: 600 11px var(--mono); letter-spacing: .1em; padding: 8px 0 4px; list-style: none; }
     details.vt summary::-webkit-details-marker { display: none; }
@@ -467,9 +476,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=102"></script>
-  <script src="logic.js?v=102"></script>
-  <script src="store.js?v=102"></script>
-  <script src="app.js?v=102"></script>
+  <script src="version.js?v=104"></script>
+  <script src="logic.js?v=104"></script>
+  <script src="store.js?v=104"></script>
+  <script src="app.js?v=104"></script>
 </body>
 </html>

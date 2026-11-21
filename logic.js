@@ -547,6 +547,38 @@
       net: r2(sum(v, x => x.pl)), bands: bands.filter(x => x.n), fails });
   }
 
+  // Simulador: qué habría pasado con tus mismas apuestas simples cerradas (ganada/perdida/nula) y otra forma de apostar.
+  //  real: lo que pasó · flat: siempre el importe medio · value: importe medio solo con valor ≥ umbral · value5: solo con valor ≥ 5 %
+  //  kelly: fracción de Kelly sobre la banca (compuesta), solo apuestas con cuota justa y ventaja.
+  function strategies(bets, moves, opts) {
+    const o = Object.assign({ thr: 0.03, kelly: 0.25 }, opts || {});
+    const bb = bankBefore(bets, moves);
+    const list = bets.filter(b => !b.bonus && isSingle(b) && ['W', 'L', 'V'].includes(b.result) && b.odds > 1 && +b.stake > 0).sort(byTime);
+    if (!list.length) return [];
+    const avg = list.reduce((a, b) => a + +b.stake, 0) / list.length;
+    const pay = (b, st) => b.result === 'W' ? st * (b.odds - 1) : b.result === 'L' ? -st : 0;
+    const edge = b => b.fair > 1 ? b.odds / b.fair - 1 : null;
+    const run = (key, label, pick, stakeOf) => {
+      let n = 0, staked = 0, pr = 0;
+      list.forEach(b => { if (!pick(b)) return; const st = stakeOf(b); if (!(st > 0)) return; n++; staked += st; pr += pay(b, st); });
+      return { key, label, n, staked: r2(staked), profit: r2(pr), yield: staked > 0 ? pr / staked : null };
+    };
+    const out = [
+      run('real', 'Lo que hiciste', () => true, b => +b.stake),
+      run('flat', 'Mismo importe siempre', () => true, () => avg),
+      run('value', `Solo con valor ≥ ${Math.round(o.thr * 100)} %`, b => edge(b) != null && edge(b) >= o.thr, () => avg),
+      run('value5', 'Solo con valor ≥ 5 %', b => edge(b) != null && edge(b) >= 0.05, () => avg)
+    ];
+    // Kelly compuesto: la banca empieza en la que había antes de la primera apuesta con cuota justa
+    const kl = list.filter(b => edge(b) != null);
+    if (kl.length) {
+      let bank = bb[kl[0].id] > 0 ? bb[kl[0].id] : avg * 50, n = 0, staked = 0, pr = 0;
+      kl.forEach(b => { const p = 1 / b.fair, k = (p * b.odds - 1) / (b.odds - 1); if (k <= 0) return; const st = Math.min(bank * 0.25, bank * k * o.kelly); if (!(st > 0)) return; n++; staked += st; const g = pay(b, st); pr += g; bank += g; });
+      out.push({ key: 'kelly', label: `Kelly (fracción ${String(o.kelly).replace('.', ',')})`, n, staked: r2(staked), profit: r2(pr), yield: staked > 0 ? pr / staked : null });
+    }
+    return out;
+  }
+
   // Horas que faltaban para el partido cuando se apuntó la apuesta (null si no se sabe).
   const hoursBefore = b => {
     const t = b.commence ? new Date(b.commence).getTime() : NaN;
@@ -589,6 +621,6 @@
     funds, stakeFor, suggestStake, summarize, periods, profitHistory, peaks, bankSeries, oddsStats, ODDS_RANGES, oddsRange, groupBy, streak, clvStats, lossWindows,
     clvBy, edgeAtBet, clvSeries, hoursBefore, hourBucket, HOUR_KEYS, fairDrift,
     expectedVsReal, luckTest, normCdf, CAL_KEYS, calibration, monthly, daily, drawdown, streakRecords, volatility, crossTab,
-    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks, pickConfidence, stakeByConfidence, favStats, bankBefore, riskStats, riskSim, expectedLongestLoss, setClvMode, clvOf, clvSel, clvPaid, clvParts };
+    belowFairByMonth, stakeVsSuggested, volume, tilt, limitWeeks, pickConfidence, stakeByConfidence, favStats, strategies, bankBefore, riskStats, riskSim, expectedLongestLoss, setClvMode, clvOf, clvSel, clvPaid, clvParts };
   if (typeof module !== 'undefined') module.exports = L; else root.Logic = L;
 })(typeof window !== 'undefined' ? window : globalThis);

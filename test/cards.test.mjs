@@ -44,3 +44,26 @@ console.log('OK modelo de tarjetas y córneres');
   assert(!pickMessage({ ...p, cc: null }, 0.03).includes('Córners'));
   console.log('OK mensaje de Telegram');
 }
+
+{
+  const P = await import('../supabase/functions/bt-cards/paper.js');
+  const csv = 'Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,HC,AC,HY,AY,HR,AR\nSP1,14/11/2026,Real Madrid,Barcelona,2,1,6,4,2,3,0,1\nSP1,15/11/2026,Ath Madrid,Sevilla,0,0,3,5,1,1,0,0';
+  const C = await import('../supabase/functions/bt-cards/cards.js');
+  const res = P.resultRows(C.parseCsv(csv));
+  assert.strictEqual(res.length, 2); assert.strictEqual(res[0][0], '2026-11-14'); assert.strictEqual(res[0][5], 10); assert.strictEqual(res[0][6], 6);
+  const r = P.findResult(res, 'Real Madrid CF', 'FC Barcelona', '2026-11-14');
+  assert(r && r[1] === 'Real Madrid');
+  assert.strictEqual(P.findResult(res, 'Real Madrid', 'Barcelona', '2026-11-20'), null);
+  assert.strictEqual(P.settle('h2h', '1', null, r), 'W'); assert.strictEqual(P.settle('dc', 'X2', null, r), 'L');
+  assert.strictEqual(P.settle('totals', 'O', 2.5, r), 'W'); assert.strictEqual(P.settle('btts', 'Y', null, r), 'W');
+  assert.strictEqual(P.settle('corners', 'U', 9.5, r), 'L'); assert.strictEqual(P.settle('cards', 'O', 5.5, r), 'W'); assert.strictEqual(P.settle('corners', 'O', 10, r), 'V');
+  const r0 = P.findResult(res, 'Atletico Madrid', 'Sevilla FC', '2026-11-15');
+  assert.strictEqual(P.settle('dnb', '1', null, r0), 'V');
+  const now = new Date('2026-11-23T08:00:00Z');
+  const items = [{ kind: 'bet', data: { date: '2026-11-18', stake: 10, odds: 2, result: 'W', type: '1X2', legs: [{}], clv: 0.02 } },
+    { kind: 'bet', data: { date: '2026-11-19', stake: 10, odds: 1.8, result: 'L', type: 'Goles', fair: 1.9, legs: [{}] } },
+    { kind: 'paper', data: { date: '2026-11-18', odds: 2.1, result: 'W' } }, { kind: 'claude', data: { date: '2026-11-17', odds: 1.9, result: 'L' } }];
+  const rep = P.weeklyReport(items, now);
+  assert(rep.includes('Apuestas: <b>2</b>') && rep.includes('+0,00 €') && rep.includes('por debajo de la cuota justa') && rep.includes('Picks en papel') && rep.includes('Picks de Claude'));
+  console.log('OK resultados, cierre en papel e informe semanal');
+}

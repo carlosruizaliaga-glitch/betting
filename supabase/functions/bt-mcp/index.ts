@@ -1,4 +1,4 @@
-// bt-mcp: servidor MCP (solo lectura) para que Claude analice los picks y la banca de la app Betting.
+// bt-mcp: servidor MCP para que Claude analice los picks y la banca de la app Betting (lectura) y guarde sus picks (guardar_pick_claude).
 // Protegido con una clave larga en la dirección (?k=...) guardada en bt_state('mcp_token').
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -83,20 +83,49 @@ async function toolPicks(args: any) {
   return { banca_disponible_eur: f.available, umbral_valor_pct: thr * 100, nota: 'ventaja = cuota/cuota_justa - 1. stake_kelly_eur ya aplica la fracción Kelly del usuario. sin_apostar: todos los partidos sin apuesta (hay_valor marca los que tienen ventaja). apostados: partidos donde ya hay apuesta pendiente, con las opciones ACTUALES para comparar con lo que se cogió. mercados_derivados: doble oportunidad y empate no válido calculados desde el precio justo 1X2 (comparar con la cuota real de la casa). modelo_tarjetas_corners: modelo propio (football-data.co.uk) con media y líneas de córneres y tarjetas si el usuario lo calculó en la app. Solo lectura: no se apuesta desde aquí.', sin_apostar: outNo, apostados: outYes };
 }
 
+// Guarda una recomendación de Claude como "pick de Claude" (se cierra sola con el resultado y se compara con el sistema).
+const MK = ['h2h', 'dc', 'dnb', 'totals', 'btts', 'corners', 'cards'];
+async function toolSave(a: any) {
+  const market = String(a.mercado || ''), outcome = String(a.resultado || '').toUpperCase(), odds = +a.cuota;
+  if (!MK.includes(market)) return { error: 'mercado no válido: ' + MK.join(', ') };
+  if (!['1', 'X', '2', '1X', '12', 'X2', 'O', 'U', 'Y', 'N'].includes(outcome)) return { error: 'resultado no válido (1, X, 2, 1X, 12, X2, O, U, Y, N)' };
+  if (!(odds > 1)) return { error: 'cuota no válida' };
+  let p: any = null;
+  if (a.pick_id) { const { data } = await db.from('bt_picks').select('id,sport_key,home,away,league,commence_time').eq('id', String(a.pick_id)).maybeSingle(); p = data; }
+  if (!p) return { error: 'pick_id no encontrado: usa el pick_id que devuelve picks_proximos' };
+  const point = a.linea != null && a.linea !== '' ? +a.linea : null;
+  const id = `cl-${p.id}-${market}-${outcome}${point != null ? '-' + point : ''}`;
+  const data = { id, pickId: p.id, date: String(p.commence_time).slice(0, 10), commence: p.commence_time, sport_key: p.sport_key, home: p.home, away: p.away, league: p.league,
+    event: `${p.home} – ${p.away}`, sel: String(a.seleccion || '').slice(0, 120), market, outcome, point, odds, fair: +a.cuota_justa > 1 ? +a.cuota_justa : null,
+    stake: +a.importe_eur > 0 ? +a.importe_eur : null, reason: String(a.motivo || '').slice(0, 400), result: null, created: Date.now() };
+  const { error } = await db.from('bt_items').upsert({ id, kind: 'claude', data, updated_at: Date.now(), deleted: false, server_ts: new Date().toISOString() });
+  return error ? { error: error.message } : { ok: true, id, nota: 'Guardado como pick de Claude. La app lo cierra sola con el resultado (ligas cubiertas por football-data.co.uk).' };
+}
+
 const TOOLS = [
   { name: 'estado_banca', description: 'Banca disponible, dinero en juego, apuestas pendientes, beneficio reciente y ajustes de Betting (unidad, Kelly, umbral, límites).', inputSchema: { type: 'object', properties: {} } },
-  { name: 'picks_proximos', description: 'Picks de las próximas horas con precio justo (Pinnacle/Betfair sin margen), cuota disponible en las casas del usuario, ventaja y stake Kelly sugerido. Por defecto solo los que tienen valor.', inputSchema: { type: 'object', properties: { horas: { type: 'number', description: 'Ventana en horas (1-168, por defecto 48)' }, solo_valor: { type: 'boolean', description: 'Solo opciones con valor (por defecto true)' } } } }
+  { name: 'guardar_pick_claude', description: 'Guarda en la app Betting cada recomendación final de Claude para medir después si acierta. Una llamada por apuesta recomendada.', inputSchema: { type: 'object', required: ['pick_id', 'mercado', 'resultado', 'cuota'], properties: {
+    pick_id: { type: 'string', description: 'pick_id del partido (de picks_proximos)' },
+    mercado: { type: 'string', enum: ['h2h', 'dc', 'dnb', 'totals', 'btts', 'corners', 'cards'], description: 'h2h=1X2, dc=doble oportunidad, dnb=empate no válido, totals=goles más/menos, btts=ambos marcan, corners, cards=tarjetas' },
+    resultado: { type: 'string', description: '1, X, 2 (h2h y dnb); 1X, 12, X2 (dc); O=más, U=menos (totals, corners, cards); Y/N (btts)' },
+    linea: { type: 'number', description: 'Línea para totals, corners y cards (por ejemplo 2.5 o 9.5)' },
+    cuota: { type: 'number', description: 'Cuota mínima o cuota de bet365 a la que lo recomiendas' },
+    cuota_justa: { type: 'number', description: 'Tu cuota justa estimada' },
+    seleccion: { type: 'string', description: 'Texto corto, por ejemplo "Más de 9,5 córners"' },
+    importe_eur: { type: 'number', description: 'Importe recomendado en €' },
+    motivo: { type: 'string', description: 'Motivo en una o dos frases' } } } },
+  { name: 'picks_proximos', description: 'Picks de las próximas horas con precio justo (Pinnacle/Betfair sin margen), cuota disponible en las casas del usuario, ventaja y stake Kelly sugerido. Devuelve sin_apostar (todos los partidos sin apuesta, con hay_valor) y apostados (con apuesta pendiente y sus opciones actuales), más doble oportunidad, empate no válido y modelo de tarjetas y córneres.', inputSchema: { type: 'object', properties: { horas: { type: 'number', description: 'Ventana en horas (1-168, por defecto 48)' }, solo_valor: { type: 'boolean', description: 'Solo opciones con valor en sin_apostar (por defecto false)' } } } }
 ];
 
 async function handle(m: any) {
   const id = m.id, ok = (result: unknown) => ({ jsonrpc: '2.0', id, result });
-  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.4.0' } });
+  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.5.0' } });
   if (m.method === 'ping') return ok({});
   if (m.method === 'tools/list') return ok({ tools: TOOLS });
   if (m.method === 'tools/call') {
     try {
       const n = m.params && m.params.name, a = (m.params && m.params.arguments) || {};
-      const res = n === 'estado_banca' ? await toolEstado() : n === 'picks_proximos' ? await toolPicks(a) : null;
+      const res = n === 'estado_banca' ? await toolEstado() : n === 'picks_proximos' ? await toolPicks(a) : n === 'guardar_pick_claude' ? await toolSave(a) : null;
       if (!res) return { jsonrpc: '2.0', id, error: { code: -32602, message: 'Herramienta desconocida' } };
       return ok({ content: [{ type: 'text', text: JSON.stringify(res) }] });
     } catch (e) { return ok({ isError: true, content: [{ type: 'text', text: 'Error: ' + (e as Error).message }] }); }
