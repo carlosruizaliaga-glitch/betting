@@ -123,13 +123,14 @@
   let tab = 'home';
   const filters = { book: '', sport: '', type: '', tipster: '', league: '', result: '' };
   let statsPeriod = 'TOTAL', statsBy = 'sport', statsTab = 'res', favThr = 0.5, statsSel = null;
+  let pickPage = null, pkTab = 'sum', pkListY = 0;   // partido abierto en Picks y pestaña dentro de su página
   let combo = [], comboOdds = 0;     // combinada en preparación desde el comprobador de Picks
   const view = document.getElementById('view');
   // ---------- Atrás (gesto o botón del móvil) ----------
   // Cada pantalla, hoja y diálogo es una entrada del historial: al ir atrás el móvil anima directamente
   // a lo anterior (cerrar la ventana → pantalla anterior). Debajo de todo hay una entrada de INICIO
   // que, al alcanzarla, se vuelve a poner: así la app nunca se cierra con el gesto.
-  function navState(sheetOpen) { return { bt: 1, tab, sheet: !!sheetOpen }; }
+  function navState(sheetOpen) { return { bt: 1, tab, pp: pickPage, sheet: !!sheetOpen }; }
   // Cola de cambios del historial: los "atrás" que provoca la app al cerrar con un botón se agrupan en un solo
   // history.go(-n) y las entradas nuevas esperan a que termine (el navegador cancela o junta los pasos si se solapan).
   let backN = 0, awaitingPop = false, flushT = null;
@@ -144,7 +145,7 @@
     while (pendingPush.length) history.pushState(pendingPush.shift(), '');
   }
   function go(t) {
-    if (t === tab) { window.scrollTo(0, 0); return; }
+    if (t === tab) { if (t === 'picks' && pickPage) closePickPage(); else window.scrollTo(0, 0); return; }
     tab = t;
     navPush(navState(false));
     render(); window.scrollTo(0, 0);
@@ -160,8 +161,8 @@
     if (sheetEl && !st.sheet) closeSheet(true);
     else if (!sheetEl && st.sheet) history.replaceState(Object.assign({}, st, { sheet: false }), '');
     if (st.guard) history.pushState({ bt: 1, tab: 'home' }, '');
-    const t = st.tab || 'home';
-    if (t !== tab) { tab = t; render(); window.scrollTo(0, 0); }
+    const t = st.tab || 'home', pp = st.pp || null;
+    if (t !== tab || pp !== pickPage) { tab = t; pickPage = pp; render(); window.scrollTo(0, pp || t !== 'picks' ? 0 : pkListY); }
   });
   document.getElementById('fab').addEventListener('click', () => openBet());
   // El botón + se esconde al bajar (para no tapar el contenido) y vuelve al subir.
@@ -735,7 +736,7 @@
     }
     renderLegs(); refresh();
 
-    const tp = $('#toPick'); if (tp) tp.onclick = () => { closeSheet(); openPicks.add(b.pickId); pv.bet = ''; picksMode = 'all'; savePv(); if (tab === 'picks') render(); else go('picks'); };
+    const tp = $('#toPick'); if (tp) tp.onclick = () => { closeSheet(); pv.bet = ''; picksMode = 'all'; savePv(); if (tab === 'picks') openPickPage(b.pickId); else { pkTab = 'sum'; pickPage = b.pickId; go('picks'); } };
     $('#addLeg').onclick = () => {
       if (b.legs.length === 1 && b.legs[0].odds == null && b.odds) b.legs[0].odds = b.odds;
       b.legs.push({ event: '', sel: '', odds: null });
@@ -1103,7 +1104,6 @@
   const pv = { sport: '', league: '', day: '', bet: '', sort: 'value' };
   try { Object.assign(pv, JSON.parse(localStorage.getItem(PV) || '{}')); } catch (e) { /* sin almacenamiento */ }
   const savePv = () => { try { localStorage.setItem(PV, JSON.stringify(pv)); } catch (e) { /* sin almacenamiento */ } };
-  const openPicks = new Set();
 
   // Mayor ventaja del partido sobre la cuota justa (en cualquier mercado), para ordenar por valor.
   const bestEdge = p => {
@@ -1169,7 +1169,7 @@
       <tr><td class="muted">Justa</td>${keys.map(k => `<td class="num muted">${odds(p.fair_odds[k])}</td>`).join('')}</tr></table>
       <div class="muted hint" style="margin-top:4px">En negrita, la mejor de cada resultado. <span class="pos">Verde</span>: hay valor con tu umbral · <span class="yellow">naranja</span>: por encima de la justa. ★ = tus casas (Ajustes → Valor y casas). Bet365 no está en la fuente de cuotas: compáralo con el comprobador.</div>`;
   }
-  function pickDetail(p, thr) {
+  function marketsBlock(p, thr) {
     const sec = (title, html) => `<div class="pksec">${title}</div>${html}`;
     const d = deriveMk(p.fair_prob), soccer = sportOf(p.sport_key) === 'soccer';
     let h = sec(soccer ? 'RESULTADO FINAL (1X2)' : 'GANADOR', pickCells(p, p, 'h2h', thr, false));
@@ -1182,7 +1182,6 @@
     } else if (soccer) {
       h += `<button class="block" style="margin-top:10px" data-extras="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ AMBOS MARCAN Y MÁS/MENOS 0,5 / 1,5 / 3,5 · 2 CRÉDITOS</button>`;
     }
-    h += sourcesBlock(p, soccer) + checkerBlock(p, d);
     return h;
   }
 
@@ -1209,8 +1208,7 @@
       ${warn ? `<div class="hint" style="margin-top:6px;color:var(--text)">${esc(warn)}</div>` : ''}
       <div class="muted hint" style="margin-top:4px">La cuota mínima la marca el mercado afinado; las otras fuentes sirven para detectar partidos raros.</div>
       ${soccer && !mod ? `<button class="block" style="margin-top:8px" data-model="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ VER MODELO DE API-FOOTBALL · 2 CONSULTAS</button>` : ''}
-      ${ccBlock(p, soccer)}
-      <button class="block" style="margin-top:8px" data-tg="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>✈ ENVIAR ESTE PARTIDO A TELEGRAM</button>`;
+      `;
   }
 
   // Modelo propio de tarjetas y córneres (football-data.co.uk): media esperada y líneas con probabilidad, cuota justa y cuota mínima con valor.
@@ -1328,6 +1326,55 @@
       <button class="block primary" data-cbbet style="margin-top:8px">APUNTAR COMBINADA</button></div>`;
   }
 
+  // Selecciones con valor del partido, listas para apostar con un toque (ordenadas por ventaja).
+  function valueRows(p) {
+    const rows = [], add = (mk, market, point) => {
+      if (mk && mk.value_outcome && mk.best && mk.best[mk.value_outcome]) rows.push({ mk, market, o: mk.value_outcome, point, b: mk.best[mk.value_outcome] });
+    };
+    add(p, 'h2h'); add(p.totals, 'totals', p.totals && p.totals.point);
+    if (p.extras) { add(p.extras.btts, 'btts'); (p.extras.lines || []).forEach(l => add(l, 'totals', l.point)); }
+    return rows.sort((a, b) => b.b.edge - a.b.edge);
+  }
+  function openPickPage(id) {
+    pkListY = window.scrollY; pickPage = id; pkTab = 'sum';
+    navPush(navState(false)); render(); window.scrollTo(0, 0);
+  }
+  function closePickPage() { pickPage = null; render(); window.scrollTo(0, pkListY); navBack(); }
+
+  // Página de un partido: cabecera, resumen con lo que se puede apostar y pestañas con el detalle ordenado.
+  function pickPageHtml(p, st, my) {
+    const soccer = sportOf(p.sport_key) === 'soccer', thr = st.threshold, d = deriveMk(p.fair_prob);
+    const dt = new Date(p.commence_time), fmt = o => dt.toLocaleString('es-ES', Object.assign({ timeZone: 'Europe/Madrid' }, o));
+    const rows = valueRows(p), mname = (r) => r.market === 'h2h' ? (soccer ? 'Resultado final' : 'Ganador') : r.market === 'btts' ? 'Ambos marcan' : `Más/menos ${ptxt(r.point)} goles`;
+    const tabs = [['sum', 'RESUMEN'], ['mk', 'MERCADOS']].concat(soccer ? [['cc', 'TARJETAS Y CÓRNERS']] : []).concat([['od', 'CUOTAS Y FUENTES'], ['ck', 'COMPROBAR BET365']]);
+    if (!tabs.some(t => t[0] === pkTab)) pkTab = 'sum';
+    const tot = my.reduce((a, b) => a + (+b.stake || 0), 0);
+    let body = '';
+    if (pkTab === 'sum') {
+      body = `<div class="pksec" style="margin-top:2px">${rows.length ? `CON VALOR AHORA · ${rows.length}` : 'SIN VALOR AHORA'}</div>
+        ${rows.map(r => { const o = r.o, pr = r.mk.fair_prob[o] * 100, pcl = pr >= 60 ? 'pos' : pr >= 35 ? 'yellow' : 'neg';
+          return `<button class="vrow" data-pick="${esc(p.id)}" data-o="${o}" data-m="${r.market}"${r.point != null ? ` data-pt="${r.point}"` : ''}>
+            <div class="grow"><b>${esc(cellLabel(p, r.market, o, r.point))}</b><div class="muted">${mname(r)} · <span class="${pcl}">${fnum(pr, 0)} %</span> · justa ${odds(r.mk.fair_odds[o])}</div></div>
+            <div style="text-align:right"><b class="pos">+${fnum(r.b.edge * 100, 1)} %</b><div class="muted">${esc(r.b.book)} ${odds(r.b.odds)} · ≥ ${odds(minB365(r.mk.fair_odds[o], thr))}</div></div></button>`; }).join('')}
+        ${rows.length ? '<div class="muted hint" style="margin-top:6px">Toca una selección para apuntarla. «≥» es la cuota mínima en bet365 para que haya valor.</div>' : '<div class="muted hint" style="margin-top:6px">Ninguna cuota de tus casas supera la justa con tu umbral. Mira MERCADOS o COMPROBAR BET365 si tienes una cuota concreta.</div>'}
+        <div class="pksec">${soccer ? 'RESULTADO FINAL' : 'GANADOR'}</div>${pickCells(p, p, 'h2h', thr, true)}
+        ${p.totals ? `<div class="pksec">MÁS/MENOS ${ptxt(p.totals.point)} GOLES</div>${pickCells(p, p.totals, 'totals', thr, true)}` : ''}
+        ${my.length ? betsHere(my) : ''}
+        ${p.model && p.model.advice ? `<div class="pksec">CONSEJO DEL MODELO</div><div class="hint" style="margin-top:6px;color:var(--text)">${esc(p.model.advice)}</div>` : ''}
+        <button class="block" style="margin-top:12px" data-tg="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>✈ ENVIAR ESTE PARTIDO A TELEGRAM</button>`;
+    } else if (pkTab === 'mk') body = marketsBlock(p, thr);
+    else if (pkTab === 'cc') body = ccBlock(p, soccer);
+    else if (pkTab === 'od') body = oddsTable(p, thr) + sourcesBlock(p, soccer);
+    else body = checkerBlock(p, d);
+    return `<div class="row" style="margin-top:10px"><button class="small" id="pgBack">‹ PICKS</button><div class="grow"></div><span class="muted">${fmt({ weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase().replace(/\./g, '')} · ${fmt({ hour: '2-digit', minute: '2-digit' })}</span></div>
+      <div class="pghead"><h2>${esc(p.home)} – ${esc(p.away)}</h2>
+        <div class="muted">${sportEmoji(p.sport_key)} ${esc(p.league)}${my.length ? ` · <span class="tag mine" data-openbet="${my[0].id}">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO · ${eur(tot)}</span>` : ''}</div></div>
+      <div class="seg pgtabs scroll-x">${tabs.map(([k, t]) => `<button data-pgt="${k}" class="${pkTab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+      ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
+      <div class="card pgbody">${body}</div>
+      <div class="muted" style="margin:8px 2px">PRECIO JUSTO: ${(p.fair_src || ['pinnacle']).map(s => s === 'betfair' ? 'BETFAIR' : 'PINNACLE').join(' + ')} · CAPTURA ${new Date(p.captured_at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</div>`;
+  }
+
   function renderPicks() {
     const st = settings();
     if (!picksMode) picksMode = st.sendMode;
@@ -1343,6 +1390,14 @@
     // Apuestas que ya tienes en cada partido (para no repetir).
     const mine = {};
     bets().forEach(b => { const k = b.pickId || b.refPick; if (k) (mine[k] = mine[k] || []).push(b); });
+    const pg = pickPage && (pickCache.picks || []).find(x => x.id === pickPage);
+    if (pickPage && !pg) pickPage = null;
+    if (pg) {
+      view.innerHTML = pickPageHtml(adjPick(pg, st), st, mine[pg.id] || []);
+      view.querySelector('#pgBack').onclick = closePickPage;
+      view.querySelectorAll('[data-pgt]').forEach(b => b.onclick = () => { pkTab = b.dataset.pgt; render(); });
+      wirePicks(); return;
+    }
     const preFiltered = upcoming.filter(p => (!pv.sport || sportOf(p.sport_key) === pv.sport) && (!pv.league || p.league === pv.league) &&
       (!pv.day || (pv.day === 'later' ? dayOf(p) >= after : dayOf(p) === pv.day)));
     const nBet = preFiltered.filter(p => mine[p.id]).length, nNoBet = preFiltered.length - nBet;
@@ -1393,19 +1448,15 @@
       const d = new Date(p.commence_time), day = dayOf(p);
       if (pv.sort === 'time') { const h = fdateShort(day); if (h !== hdr) { html += `<div class="datehdr">${h}</div>`; hdr = h; } }
       const time = d.toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' });
-      const vl = valueList(p), ve = vl.length ? vl[0].edge : null, my = mine[p.id] || [], open = openPicks.has(p.id);
+      const vl = valueList(p), ve = vl.length ? vl[0].edge : null, my = mine[p.id] || [];
       const when = pv.sort === 'time' ? time : `${day === today ? 'HOY' : day === tomorrow ? 'MAÑ' : fdateShort(day).split(' ')[0]} ${time}`;
-      html += `<div class="pkcard${ve != null ? ' v' : ''}">
-        <div class="pkhead" data-toggle="${esc(p.id)}">
+      html += `<div class="pkcard sm${ve != null ? ' v' : ''}" data-go="${esc(p.id)}">
+        <div class="pkhead">
           <div class="grow" style="min-width:0"><div class="ellipsis"><b>${esc(p.home)} – ${esc(p.away)}</b></div>
-            <div class="muted ellipsis">${when} · ${sportEmoji(p.sport_key)} ${esc(p.league)}</div></div>
-          ${my.length ? `<span class="tag mine" data-openbet="${my[0].id}" title="Ya apostado: toca para ver la apuesta">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO</span>` : ''}
-          ${ve != null ? `<span class="tag P pktag" title="${esc(vl[0].label)}">⭐ ${esc(vl[0].label.length > 12 ? vl[0].label.slice(0, 11) + '…' : vl[0].label)} +${fnum(ve * 100, 0)}%${Math.abs(vl[0].move) >= 0.02 ? (vl[0].move > 0 ? ' ↑' : ' ↓') + Math.round(Math.abs(vl[0].move) * 100) : ''}</span>` : ''}
-          <span class="muted">${open ? '▲' : '▼'}</span>
+            <div class="ellipsis" style="font-size:11px;margin-top:2px"><span class="muted">${when} · ${sportEmoji(p.sport_key)} ${esc(p.league)}</span>${my.length ? ` <span class="tag mine" data-openbet="${my[0].id}">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO</span>` : ''}${ve != null ? ` <span class="tag P">⭐ +${fnum(ve * 100, 0)}%${Math.abs(vl[0].move) >= 0.02 ? (vl[0].move > 0 ? ' ↑' : ' ↓') + Math.round(Math.abs(vl[0].move) * 100) : ''}</span>` : ''}</div></div>
+          <span class="muted">›</span>
         </div>
-        ${open ? betsHere(my) + pickDetail(p, st.threshold) + oddsTable(p, st.threshold) +
-          `<div class="muted" style="margin-top:6px">PRECIO JUSTO: ${(p.fair_src || ['pinnacle']).map(s => s === 'betfair' ? 'BETFAIR' : 'PINNACLE').join(' + ')} · CAPTURA ${new Date(p.captured_at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}${my.length ? ' · TUS APUESTAS: ' + my.map(b => esc(selText(b)) + ' @' + odds(b.odds)).join(', ') : ''}</div>`
-          : pickCells(p, p, 'h2h', st.threshold, true) + (p.totals ? pickCells(p, p.totals, 'totals', st.threshold, true) : '')}
+        ${pickCells(p, p, 'h2h', st.threshold, true)}${p.totals ? pickCells(p, p.totals, 'totals', st.threshold, true) : ''}
       </div>`;
     });
     view.innerHTML = html;
@@ -1420,9 +1471,12 @@
     view.querySelector('#askClaude').onclick = askClaude;
     const chgProj = view.querySelector('#chgProject');
     if (chgProj) chgProj.onclick = () => { const v = (window.prompt('Enlace del proyecto Betting en claude.ai', settings().claudeProject || '') || '').trim(); if (/^https:\/\/claude\.ai\/project\//.test(v)) saveSettings({ claudeProject: v.split('?')[0] }); };
-    view.querySelectorAll('[data-toggle]').forEach(h => h.onclick = () => {
-      const id = h.dataset.toggle; if (openPicks.has(id)) openPicks.delete(id); else openPicks.add(id); render();
-    });
+    view.querySelectorAll('[data-go]').forEach(c => c.onclick = ev => { if (ev.target.closest('button, [data-openbet]')) return; openPickPage(c.dataset.go); });
+    wirePicks();
+  }
+
+  // Toques de los partidos (lista y página): apuntar, mercados extra, modelo, tarjetas, combinada, Telegram y comprobador.
+  function wirePicks() {
     view.querySelectorAll('[data-openbet]').forEach(el => el.onclick = ev => { ev.stopPropagation(); const b = S.get(el.dataset.openbet); if (b) openBet(b); });
     view.querySelectorAll('[data-extras]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadExtras(b.dataset.extras); });
     view.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {

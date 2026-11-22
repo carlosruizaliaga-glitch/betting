@@ -342,6 +342,20 @@
     .lg .rm { width: 30px; height: 30px; padding: 0; color: var(--neg); background: none; border-color: transparent; border-radius: 9px; }
     .pkcard { border: 1px solid var(--line); border-radius: var(--r); background: linear-gradient(180deg, var(--card), var(--card2)); padding: 11px 12px 12px; margin: 8px 0; box-shadow: var(--shadow); }
     .pkcard.v { box-shadow: inset 3px 0 0 var(--yellow), var(--shadow); }
+    .pkcard.sm { padding: 8px 10px 9px; margin: 6px 0; cursor: pointer; }
+    .pkcard.sm .pkrow { margin-top: 6px; gap: 5px; }
+    .pkcard.sm .pkc { padding: 4px 2px 4px; }
+    .pkcard.sm .pkc b { font-size: 15px; }
+    .pkcard.sm .pkc .o { font-size: 10.5px; }
+    .pkcard.sm .pkc span.cyan { font-size: 11.5px; }
+    .pghead { margin: 10px 2px 2px; }
+    .pghead h2 { margin: 0 0 4px; font: 800 22px/1.2 var(--sans); letter-spacing: 0; text-transform: none; }
+    .pgtabs { margin-top: 10px; overflow-x: auto; flex-wrap: nowrap; }
+    .pgtabs button { flex: none; padding: 9px 11px; white-space: nowrap; }
+    .pgbody { margin-top: 10px; padding-top: 10px; }
+    .vrow { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; margin-top: 8px; padding: 10px 12px; background: var(--card2); border: 1px solid color-mix(in srgb, var(--pos) 55%, transparent); border-radius: var(--r-sm); font: 400 13px/1.35 var(--sans); letter-spacing: 0; text-transform: none; color: var(--text); }
+    .vrow b { font: 700 14px/1.3 var(--sans); }
+    .vrow .muted { font: 400 11.5px/1.35 var(--sans); }
     .pkhead { display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .pkhead .tag { flex: none; }
     .mlist { border: 1px solid var(--line); border-radius: var(--r); background: linear-gradient(180deg, var(--card), var(--card2)); box-shadow: var(--shadow); overflow: hidden; }
@@ -479,9 +493,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=109"></script>
-  <script src="logic.js?v=109"></script>
-  <script src="store.js?v=109"></script>
-  <script src="app.js?v=109"></script>
+  <script src="version.js?v=110"></script>
+  <script src="logic.js?v=110"></script>
+  <script src="store.js?v=110"></script>
+  <script src="app.js?v=110"></script>
 </body>
 </html>
