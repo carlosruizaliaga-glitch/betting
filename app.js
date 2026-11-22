@@ -1361,7 +1361,7 @@
     const soccer = sportOf(p.sport_key) === 'soccer', thr = st.threshold, d = deriveMk(p.fair_prob);
     const dt = new Date(p.commence_time), fmt = o => dt.toLocaleString('es-ES', Object.assign({ timeZone: 'Europe/Madrid' }, o));
     const rows = valueRows(p), mname = (r) => r.market === 'h2h' ? (soccer ? 'Resultado final' : 'Ganador') : r.market === 'btts' ? 'Ambos marcan' : `Más/menos ${ptxt(r.point)} goles`;
-    const tabs = [['sum', 'RESUMEN'], ['mk', 'MERCADOS']].concat(soccer ? [['cc', 'TARJETAS Y CÓRNERS']] : []).concat([['od', 'CUOTAS Y FUENTES'], ['ck', 'COMPROBAR BET365']]);
+    const tabs = [['sum', 'RESUMEN'], ['mk', 'MERCADOS']].concat(soccer ? [['cc', 'TARJETAS Y CÓRNERS']] : []).concat([['od', 'CUOTAS Y FUENTES']]);
     if (!tabs.some(t => t[0] === pkTab)) pkTab = 'sum';
     const tot = my.reduce((a, b) => a + (+b.stake || 0), 0);
     let body = '';
@@ -1380,7 +1380,7 @@
     } else if (pkTab === 'mk') body = marketsBlock(p, thr);
     else if (pkTab === 'cc') body = ccBlock(p, soccer);
     else if (pkTab === 'od') body = allOdds(p, thr) + sourcesBlock(p, soccer);
-    else body = checkerBlock(p, d);
+    body += checkerBlock(p, d);   // el comprobador de bet365 va al final de todas las pestañas
     return `<div class="row" style="margin-top:10px"><button class="small" id="pgBack">‹ PICKS</button><div class="grow"></div><span class="muted">${fmt({ weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase().replace(/\./g, '')} · ${fmt({ hour: '2-digit', minute: '2-digit' })}</span></div>
       <div class="pghead"><h2>${esc(p.home)} – ${esc(p.away)}</h2>
         <div class="muted">${sportEmoji(p.sport_key)} ${esc(p.league)}${my.length ? ` · <span class="tag mine" data-openbet="${my[0].id}">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO · ${eur(tot)}</span>` : ''}</div></div>
