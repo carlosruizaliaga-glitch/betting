@@ -123,7 +123,7 @@
   let tab = 'home';
   const filters = { book: '', sport: '', type: '', tipster: '', league: '', result: '' };
   let statsPeriod = 'TOTAL', statsBy = 'sport', statsTab = 'res', favThr = 0.5, statsSel = null;
-  let pickPage = null, pkTab = 'sum', pkListY = 0;   // partido abierto en Picks y pestaña dentro de su página
+  let pickPage = null, pkTab = 'sum', pkListY = 0, pkDir = 0;   // partido abierto en Picks y pestaña dentro de su página
   let combo = [], comboOdds = 0;     // combinada en preparación desde el comprobador de Picks
   const view = document.getElementById('view');
   // ---------- Atrás (gesto o botón del móvil) ----------
@@ -1169,7 +1169,7 @@
   function oddsTable(p, thr, set, hint) {
     set = set || oddsSets(p)[0];
     const mk = set.mk, keys = MK_KEYS[set.market] || outKeys(mk.fair_prob), rows = Object.entries(mk.prices || {}).filter(([, r]) => keys.some(k => r[k] > 1));
-    if (rows.length < 2) return '';
+    if (!rows.length) return `<div class="pksec">COMPARADOR DE CUOTAS · ${set.title}</div><div class="muted hint" style="margin-top:6px">Ninguna casa de la lista ofrece este mercado ahora mismo${set.market === 'h2h' ? '' : ' (o se cargó antes de guardar las casas: vuelve a cargarlo con BUSCAR)'}. El precio justo sale del mercado afinado.</div>`;
     const best = {}; keys.forEach(k => { best[k] = Math.max(...rows.map(([, r]) => r[k] || 0)); });
     const mine = (settings().myBooks || []).map(x => x.toLowerCase());
     const head = k => set.market === 'totals' ? (k === 'O' ? 'MÁS' : 'MENOS') : set.market === 'btts' ? (k === 'Y' ? 'SÍ' : 'NO') : k;
@@ -1351,7 +1351,7 @@
     return rows.sort((a, b) => b.b.edge - a.b.edge);
   }
   function openPickPage(id) {
-    pkListY = window.scrollY; pickPage = id; pkTab = 'sum';
+    pkListY = window.scrollY; pickPage = id; pkTab = 'sum'; pkDir = 0;
     navPush(navState(false)); render(); window.scrollTo(0, 0);
   }
   function closePickPage() { pickPage = null; render(); window.scrollTo(0, pkListY); navBack(); }
@@ -1386,7 +1386,7 @@
         <div class="muted">${sportEmoji(p.sport_key)} ${esc(p.league)}${my.length ? ` · <span class="tag mine" data-openbet="${my[0].id}">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO · ${eur(tot)}</span>` : ''}</div></div>
       <div class="seg pgtabs scroll-x">${tabs.map(([k, t]) => `<button data-pgt="${k}" class="${pkTab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
-      <div class="card pgbody">${body}</div>
+      <div class="card pgbody${pkDir ? (pkDir > 0 ? ' slr' : ' sll') : ''}">${body}</div>
       <div class="muted" style="margin:8px 2px">PRECIO JUSTO: ${(p.fair_src || ['pinnacle']).map(s => s === 'betfair' ? 'BETFAIR' : 'PINNACLE').join(' + ')} · CAPTURA ${new Date(p.captured_at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</div>`;
   }
 
@@ -1409,8 +1409,23 @@
     if (pickPage && !pg) pickPage = null;
     if (pg) {
       view.innerHTML = pickPageHtml(adjPick(pg, st), st, mine[pg.id] || []);
+      pkDir = 0;
       view.querySelector('#pgBack').onclick = closePickPage;
-      view.querySelectorAll('[data-pgt]').forEach(b => b.onclick = () => { pkTab = b.dataset.pgt; render(); });
+      const tabKeys = Array.from(view.querySelectorAll('[data-pgt]')).map(b => b.dataset.pgt);
+      const goTab = (k, dir) => { pkTab = k; pkDir = dir; render(); };
+      view.querySelectorAll('[data-pgt]').forEach(b => b.onclick = () => goTab(b.dataset.pgt, tabKeys.indexOf(b.dataset.pgt) > tabKeys.indexOf(pkTab) ? 1 : -1));
+      const on = view.querySelector('.pgtabs .on'), bar = view.querySelector('.pgtabs');
+      if (on && bar) bar.scrollLeft = on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2;
+      // Deslizar el dedo a izquierda o derecha cambia de pestaña (no si empieza en las pestañas o en una tabla con scroll).
+      let sx = 0, sy = 0, ok = false;
+      view.ontouchstart = ev => { const t = ev.touches[0]; sx = t.clientX; sy = t.clientY; ok = ev.touches.length === 1 && !ev.target.closest('.pgtabs, .scroll-x, input, select, textarea'); };
+      view.ontouchend = ev => {
+        if (!ok) return; ok = false;
+        const t = ev.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy, i = tabKeys.indexOf(pkTab);
+        if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+        const n = dx < 0 ? i + 1 : i - 1;
+        if (n >= 0 && n < tabKeys.length) { goTab(tabKeys[n], dx < 0 ? 1 : -1); window.scrollTo(0, 0); }
+      };
       wirePicks(); return;
     }
     const preFiltered = upcoming.filter(p => (!pv.sport || sportOf(p.sport_key) === pv.sport) && (!pv.league || p.league === pv.league) &&
