@@ -1,2 +1,2 @@
-window.APP_VERSION = "2026-11-22 09:11";
+window.APP_VERSION = "2026-11-22 09:30";
 window.APP_FILES = ["./","index.html","logic.js","store.js","app.js","version.js","manifest.webmanifest","favicon.png","icon-180.png","icon-192.png","icon-512.png","icon-maskable.png"];

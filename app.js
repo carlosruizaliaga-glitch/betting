@@ -1178,7 +1178,7 @@
       ${rows.sort((a, b) => keys.reduce((s2, k) => s2 + (b[1][k] || 0), 0) - keys.reduce((s2, k) => s2 + (a[1][k] || 0), 0)).map(([bk, r]) => `<tr><td>${mine.includes(bk.toLowerCase()) ? '★ ' : ''}${esc(bk)}</td>${keys.map(k => {
         const v = r[k]; if (!(v > 1)) return '<td class="num muted">—</td>';
         const c = v >= minB365(mk.fair_odds[k], thr) ? 'pos' : v >= breakEven(mk.fair_odds[k]) ? 'yellow' : '';
-        return `<td class="num ${c}">${v === best[k] ? '<b>' + odds(v) + '</b>' : odds(v)}</td>`; }).join('')}</tr>`).join('')}
+        return `<td class="num ${c} tapc" data-pick="${esc(p.id)}" data-m="${set.market}" data-o="${k}"${set.point != null ? ` data-pt="${set.point}"` : ''} data-odd="${v}">${v === best[k] ? '<b>' + odds(v) + '</b>' : odds(v)}</td>`; }).join('')}</tr>`).join('')}
       <tr><td class="muted">Justa</td>${keys.map(k => `<td class="num muted">${odds(mk.fair_odds[k])}</td>`).join('')}</tr></table>
       ${hint ? '<div class="muted hint" style="margin-top:4px">En negrita, la mejor de cada resultado. <span class="pos">Verde</span>: hay valor con tu umbral · <span class="yellow">naranja</span>: por encima de la justa. ★ = tus casas (Ajustes → Valor y casas). Bet365 no está en la fuente de cuotas: compáralo con el comprobador.</div>' : ''}`;
   }
@@ -1232,15 +1232,15 @@
     const c = p.cc, btn = (t) => `<button class="block" style="margin-top:8px" data-cc="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>${t}</button>`;
     if (!c) return `<div class="pksec">TARJETAS Y CÓRNERS</div>${btn('＋ CALCULAR TARJETAS Y CÓRNERS · SIN COSTE')}
       <div class="muted hint" style="margin-top:4px">Modelo propio con el historial de los dos equipos (football-data.co.uk). No gasta créditos ni consultas.</div>`;
-    const tbl = (m, name) => {
+    const tbl = (m, name, mkt) => {
       const main = m.lines.reduce((a, l) => Math.abs(l.over - 50) < Math.abs(a.over - 50) ? l : a, m.lines[0]);
-      const cell = (pr, fair, min, isMain) => { const c = pr >= 60 ? 'pos' : pr >= 35 ? 'yellow' : 'neg'; return `<div class="cc${isMain ? ' main' : ''}"><b class="${c}">${fnum(pr, 0)}%</b><div class="bar"><i class="bg-${c}" style="width:${pr}%"></i></div><span>justa ${odds(fair)}</span><span class="v cyan">≥ ${odds(min)}</span></div>`; };
+      const cell = (pr, fair, min, isMain, o, line) => { const c = pr >= 60 ? 'pos' : pr >= 35 ? 'yellow' : 'neg'; return `<button class="cc${isMain ? ' main' : ''}" data-pick="${esc(p.id)}" data-m="${mkt}" data-o="${o}" data-pt="${line}"><b class="${c}">${fnum(pr, 0)}%</b><div class="bar"><i class="bg-${c}" style="width:${pr}%"></i></div><span>justa ${odds(fair)}</span><span class="v cyan">≥ ${odds(min)}</span></button>`; };
       return `<div style="margin-top:12px"><b>${name}</b> <span class="muted">· media esperada</span> <b>${fnum(m.mu, 1)}</b></div>
-        <div class="ccg"><span></span><div class="ch">MÁS DE</div><div class="ch">MENOS DE</div>${m.lines.map(l => `<div class="ccl">${fnum(l.line, 1)}${l === main ? '<small>PRINCIPAL</small>' : ''}</div>${cell(l.over, l.fairOver, l.minOver, l === main)}${cell(l.under, l.fairUnder, l.minUnder, l === main)}`).join('')}</div>`;
+        <div class="ccg"><span></span><div class="ch">MÁS DE</div><div class="ch">MENOS DE</div>${m.lines.map(l => `<div class="ccl">${fnum(l.line, 1)}${l === main ? '<small>PRINCIPAL</small>' : ''}</div>${cell(l.over, l.fairOver, l.minOver, l === main, 'O', l.line)}${cell(l.under, l.fairUnder, l.minUnder, l === main, 'U', l.line)}`).join('')}</div>`;
     };
     return `<div class="pksec">TARJETAS Y CÓRNERS</div>
-      ${tbl(c.corners, 'CÓRNERS DEL PARTIDO')}${tbl(c.cards, 'TARJETAS DEL PARTIDO (AMARILLAS + ROJAS)')}
-      <div class="muted hint" style="margin-top:6px">Cada casilla: probabilidad (<span class="pos">alta</span>, <span class="yellow">media</span>, <span class="neg">baja</span>), cuota justa y <span class="cyan">cuota mínima con valor</span> (con tu umbral). La línea marcada PRINCIPAL es la más equilibrada (cerca del 50 %). Compáralas con la cuota de bet365. Basado en ${c.matches} partidos de ${esc(c.teams.home)} en casa y ${esc(c.teams.away)} fuera (media de la liga: ${fnum(c.leagueMean.corners, 1)} córners y ${fnum(c.leagueMean.cards, 1)} tarjetas). No tiene en cuenta árbitro, bajas ni motivación: ajusta con las noticias.</div>
+      ${tbl(c.corners, 'CÓRNERS DEL PARTIDO', 'corners')}${tbl(c.cards, 'TARJETAS DEL PARTIDO (AMARILLAS + ROJAS)', 'cards')}
+      <div class="muted hint" style="margin-top:6px">Toca una casilla para apuntarla. Cada casilla: probabilidad (<span class="pos">alta</span>, <span class="yellow">media</span>, <span class="neg">baja</span>), cuota justa y <span class="cyan">cuota mínima con valor</span> (con tu umbral). La línea marcada PRINCIPAL es la más equilibrada (cerca del 50 %). Compáralas con la cuota de bet365. Basado en ${c.matches} partidos de ${esc(c.teams.home)} en casa y ${esc(c.teams.away)} fuera (media de la liga: ${fnum(c.leagueMean.corners, 1)} córners y ${fnum(c.leagueMean.cards, 1)} tarjetas). No tiene en cuenta árbitro, bajas ni motivación: ajusta con las noticias.</div>
       ${btn('↻ ACTUALIZAR')}`;
   }
   async function sendTG(id) {
@@ -1527,7 +1527,7 @@
     view.querySelectorAll('[data-extras]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadExtras(b.dataset.extras); });
     view.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
       const p = (pickCache.picks || []).find(x => x.id === b.dataset.pick);
-      if (p) betFromPick(p, b.dataset.m, b.dataset.o, b.dataset.pt);
+      if (p) betFromPick(p, b.dataset.m, b.dataset.o, b.dataset.pt, b.dataset.odd ? +b.dataset.odd : undefined);
     });
     view.querySelectorAll('[data-model]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadModel(b.dataset.model); });
     view.querySelectorAll('[data-cc]').forEach(b => b.onclick = ev => { ev.stopPropagation(); loadCC(b.dataset.cc); });
