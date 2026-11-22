@@ -1156,7 +1156,7 @@
         ${row('Mercado afinado', p.fair_prob, 'pos')}${row(`Casas normales${soft ? ' (' + soft.n + ')' : ''}`, soft && soft.p, '', p.fair_prob)}${row('Modelo API-Football', mod, '', p.fair_prob)}</table>
       <div class="muted hint" style="margin-top:4px"><span class="pos">Verde</span>: coincide con el mercado (±3 puntos) · <span class="yellow">amarillo</span>: se separa algo · <span class="neg">rojo</span>: se separa mucho (más de 8).</div>
       ${mod && p.model.advice ? `<div class="muted hint" style="margin-top:4px">Consejo del modelo: ${esc(p.model.advice)}</div>` : ''}
-      ${warn ? `<div class="hint" style="margin-top:6px;color:var(--yellow)">${esc(warn)}</div>` : ''}
+      ${warn ? `<div class="hint" style="margin-top:6px;color:var(--text)">${esc(warn)}</div>` : ''}
       <div class="muted hint" style="margin-top:4px">La cuota mínima la marca el mercado afinado; las otras fuentes sirven para detectar partidos raros.</div>
       ${soccer && !mod ? `<button class="block" style="margin-top:8px" data-model="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ VER MODELO DE API-FOOTBALL · 2 CONSULTAS</button>` : ''}
       ${ccBlock(p, soccer)}
@@ -1413,8 +1413,8 @@
           <div class="muted hint" style="margin-top:6px">${conf.why.slice(0, 4).map(w => `<span class="${w.d > 0 ? 'pos' : 'neg'}">${w.d > 0 ? '+' : '−'}${Math.abs(w.d)}</span> ${esc(w.txt)}`).join('<br>')}</div>
           ${hasLv ? '' : `<div style="margin-top:6px;font:400 12px/1.5 var(--sans)">Si apuestas igualmente: <b>NIVEL 1</b> <span class="muted">(${eur(minStake)})</span>, el mínimo. No hay ventaja que justifique más.</div>`}
           ${sg ? `<div class="muted hint" style="margin-top:6px">Probabilidad prudente ${pct(sg.pc, 1)} (mercado ${pct(ci.p, 1)}): con menos confianza se asume menos.${hasLv ? ` Tope de nivel ${sg.cap} por confianza ${conf.label.toLowerCase()}.` : ''} Precio frente a la justa ${spct(odd / fair - 1, 1)}${sa.v ? ` · tu selección ${spct(sa.v, 2)}` : ''}.</div>` : ''}
-          ${market === 'corners' || market === 'cards' ? '<div class="hint" style="margin-top:6px;color:var(--yellow)">Probabilidad de tu modelo propio, sin precio de mercado de referencia: confirma árbitro, bajas y motivación antes de apostar.</div>' : ''}
-          ${ci.edge > 0.08 ? '<div class="hint" style="margin-top:6px;color:var(--yellow)">Cuota muy por encima de la justa: si es una supercuota, perfecto; si no, comprueba que es la misma selección y mercado (90 minutos) antes de apostar.</div>' : ''}`;
+          ${market === 'corners' || market === 'cards' ? '<div class="hint" style="margin-top:6px;color:var(--text)">Probabilidad de tu modelo propio, sin precio de mercado de referencia: confirma árbitro, bajas y motivación antes de apostar.</div>' : ''}
+          ${ci.edge > 0.08 ? '<div class="hint" style="margin-top:6px;color:var(--text)">Cuota muy por encima de la justa: si es una supercuota, perfecto; si no, comprueba que es la misma selección y mercado (90 minutos) antes de apostar.</div>' : ''}`;
         out.querySelector('[data-ckcombo]').onclick = () => {
           if (combo.some(l => l.pickId === p.id && l.mk === market && l.o === o && l.pt === (pt || ''))) { toast('YA ESTÁ EN LA COMBINADA'); return; }
           combo.push({ pickId: p.id, mk: market, o, pt: pt || '', event: `${p.home} – ${p.away}`, sel: OUT_NAME(p, o, market, pt ? +pt : null), fair, odd, league: p.league, sport: sportEmoji(p.sport_key) });
