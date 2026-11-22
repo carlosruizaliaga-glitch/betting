@@ -88,6 +88,24 @@ export function overProb(mu, r, line) {
 }
 
 const r2 = x => Math.round(x * 100) / 100;
+// Probabilidad de exactamente k (binomial negativa) para k = 0..n.
+export function pmfs(mu, r, n) {
+  const out = []; let p = Math.pow(r / (r + mu), r);
+  for (let k = 0; k <= n; k++) { out.push(p); p *= (k + r) / (k + 1) * mu / (r + mu); }
+  return out;
+}
+// Líneas enteras como en bet365: Más de N (más de N, sin devolución), Exactamente N y Menos de N (menos de N).
+function marketInt(mu, r, thr, halfSpan, floorLine) {
+  const base = Math.max(floorLine, Math.round(mu)), lo = Math.max(1, base - halfSpan), hi = base + halfSpan, pm = pmfs(mu, r, hi + 1), lines = [];
+  const clamp = x => Math.min(0.999, Math.max(0.001, x)), min = f => r2(Math.ceil(f * (1 + thr) * 100 - 1e-9) / 100);
+  for (let n = lo; n <= hi; n++) {
+    let cdf = 0; for (let k = 0; k < n; k++) cdf += pm[k];          // P(X < n)
+    const u = clamp(cdf), e = clamp(pm[n]), o = clamp(1 - cdf - pm[n]);
+    lines.push({ line: n, int: true, over: r2(o * 100), exact: r2(e * 100), under: r2(u * 100),
+      fairOver: r2(1 / o), fairExact: r2(1 / e), fairUnder: r2(1 / u), minOver: min(1 / o), minExact: min(1 / e), minUnder: min(1 / u) });
+  }
+  return { mu: r2(mu), lines };
+}
 function market(mu, r, nMin, thr, halfSpan, floorLine) {
   const base = Math.max(floorLine, Math.round(mu - 0.5) + 0.5), lines = [];
   for (let l = base - halfSpan; l <= base + halfSpan + 1e-9; l += 1) {
@@ -109,6 +127,6 @@ export function ccModel(table, home, away, thr) {
   const rate = (sum, n, mean) => (sum + K * mean) / (n + K);
   const muC = (rate(H.hC, H.hn, mC) + rate(A.aC, A.an, mC)) / 2, muK = (rate(H.hK, H.hn, mK) + rate(A.aK, A.an, mK)) / 2;
   const n = Math.round(Math.min(H.hn, A.an));
-  return { teams: { home: th, away: ta }, matches: n, leagueMatches: Math.round(lg.n), leagueMean: { corners: r2(mC), cards: r2(mK) },
-    corners: market(muC, disp(mC, lg.c2), n, thr, 3, 6.5), cards: market(muK, disp(mK, lg.k2), n, thr, 2, 1.5) };
+  return { v: 2, teams: { home: th, away: ta }, matches: n, leagueMatches: Math.round(lg.n), leagueMean: { corners: r2(mC), cards: r2(mK) },
+    corners: marketInt(muC, disp(mC, lg.c2), thr, 4, 3), cards: market(muK, disp(mK, lg.k2), n, thr, 2, 1.5) };
 }

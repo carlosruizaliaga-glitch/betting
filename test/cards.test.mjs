@@ -20,9 +20,12 @@ assert.strictEqual(m2.teams.away, 'Real Delta');                       // «Delt
 assert(m.corners.mu > m2.corners.mu);                                  // Alfa saca más córneres
 assert(m2.cards.mu < m.cards.mu);                                      // con Delta hay menos tarjetas
 // Probabilidades coherentes: más/menos suman 100 y bajan al subir la línea
-m.corners.lines.forEach(l => assert(Math.abs(l.over + l.under - 100) < 0.05));
+m.corners.lines.forEach(l => assert(l.int && Math.abs(l.over + l.exact + l.under - 100) < 0.3));   // córners: líneas enteras (más, exactamente, menos)
+m.cards.lines.forEach(l => assert(Math.abs(l.over + l.under - 100) < 0.05));
 for (let k = 1; k < m.corners.lines.length; k++) assert(m.corners.lines[k].over < m.corners.lines[k - 1].over);
-assert(m.corners.lines.every(l => l.minOver > l.fairOver && l.minUnder > l.fairUnder));
+assert(m.corners.lines.every(l => l.minOver > l.fairOver && l.minUnder > l.fairUnder && l.minExact > l.fairExact));
+assert.strictEqual(m.v, 2);
+const ex = m.corners.lines.reduce((a, l) => a + l.exact, 0); assert(ex > 60 && ex <= 100);
 assert.strictEqual(C.ccModel(t, 'Nadie', 'Beta', 0.03), null);
 // binomial negativa: la mediana queda cerca de la media
 const o = C.overProb(10, 20, 9.5); assert(o > 0.45 && o < 0.65);
@@ -56,7 +59,7 @@ console.log('OK modelo de tarjetas y córneres');
   assert.strictEqual(P.findResult(res, 'Real Madrid', 'Barcelona', '2026-11-20'), null);
   assert.strictEqual(P.settle('h2h', '1', null, r), 'W'); assert.strictEqual(P.settle('dc', 'X2', null, r), 'L');
   assert.strictEqual(P.settle('totals', 'O', 2.5, r), 'W'); assert.strictEqual(P.settle('btts', 'Y', null, r), 'W');
-  assert.strictEqual(P.settle('corners', 'U', 9.5, r), 'L'); assert.strictEqual(P.settle('cards', 'O', 5.5, r), 'W'); assert.strictEqual(P.settle('corners', 'O', 10, r), 'V');
+  assert.strictEqual(P.settle('corners', 'U', 9.5, r), 'L'); assert.strictEqual(P.settle('cards', 'O', 5.5, r), 'W'); assert.strictEqual(P.settle('corners', 'O', 10, r), 'L'); assert.strictEqual(P.settle('corners', 'E', 10, r), 'W'); assert.strictEqual(P.settle('corners', 'U', 11, r), 'W');
   const r0 = P.findResult(res, 'Atletico Madrid', 'Sevilla FC', '2026-11-15');
   assert.strictEqual(P.settle('dnb', '1', null, r0), 'V');
   const now = new Date('2026-11-23T08:00:00Z');

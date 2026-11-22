@@ -45,8 +45,15 @@ export function settle(market, outcome, point, r) {
   if (market === 'dnb') return res === 'X' ? 'V' : res === outcome ? 'W' : 'L';
   if (market === 'totals') return ou(hg + ag);
   if (market === 'btts') return (hg > 0 && ag > 0) === (outcome === 'Y') ? 'W' : 'L';
-  if (market === 'corners') return ou(r[5]);
-  if (market === 'cards') return ou(r[6]);
+  // Líneas enteras de córners (bet365): Más de N pierde si hay exactamente N; "E" = exactamente N.
+  const ci = total => {
+    if (total == null || !Number.isFinite(+point)) return null;
+    if (outcome === 'E') return total === +point ? 'W' : 'L';
+    if (+point % 1 === 0) return outcome === 'O' ? (total > +point ? 'W' : 'L') : (total < +point ? 'W' : 'L');
+    return ou(total);
+  };
+  if (market === 'corners') return ci(r[5]);
+  if (market === 'cards') return ci(r[6]);
   return null;
 }
 

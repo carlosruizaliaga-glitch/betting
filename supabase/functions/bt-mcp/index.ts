@@ -80,7 +80,7 @@ async function toolPicks(args: any) {
     if (mine.length) { item.mis_apuestas = mine.map(b => ({ seleccion: (b.legs || []).map((l: any) => l.sel).join(' + ') || b.event, cuota_que_cogi: b.odds, importe_eur: b.stake, cuota_justa_al_apostar: b.fair || null, casa: b.book })); outYes.push(item); }
     else outNo.push(item);
   }
-  return { banca_disponible_eur: f.available, umbral_valor_pct: thr * 100, nota: 'ventaja = cuota/cuota_justa - 1. stake_kelly_eur ya aplica la fracción Kelly del usuario. sin_apostar: todos los partidos sin apuesta (hay_valor marca los que tienen ventaja). apostados: partidos donde ya hay apuesta pendiente, con las opciones ACTUALES para comparar con lo que se cogió. mercados_derivados: doble oportunidad y empate no válido calculados desde el precio justo 1X2 (comparar con la cuota real de la casa). modelo_tarjetas_corners: modelo propio (football-data.co.uk) con media y líneas de córneres y tarjetas si el usuario lo calculó en la app. Solo lectura: no se apuesta desde aquí.', sin_apostar: outNo, apostados: outYes };
+  return { banca_disponible_eur: f.available, umbral_valor_pct: thr * 100, nota: 'ventaja = cuota/cuota_justa - 1. stake_kelly_eur ya aplica la fracción Kelly del usuario. sin_apostar: todos los partidos sin apuesta (hay_valor marca los que tienen ventaja). apostados: partidos donde ya hay apuesta pendiente, con las opciones ACTUALES para comparar con lo que se cogió. mercados_derivados: doble oportunidad y empate no válido calculados desde el precio justo 1X2 (comparar con la cuota real de la casa). modelo_tarjetas_corners: modelo propio (football-data.co.uk) con media y líneas de córneres y tarjetas si el usuario lo calculó en la app; los córneres usan líneas enteras como bet365 (más de N, exactamente N, menos de N). Solo lectura: no se apuesta desde aquí.', sin_apostar: outNo, apostados: outYes };
 }
 
 // Guarda una recomendación de Claude como "pick de Claude" (se cierra sola con el resultado y se compara con el sistema).
@@ -88,7 +88,7 @@ const MK = ['h2h', 'dc', 'dnb', 'totals', 'btts', 'corners', 'cards'];
 async function toolSave(a: any) {
   const market = String(a.mercado || ''), outcome = String(a.resultado || '').toUpperCase(), odds = +a.cuota;
   if (!MK.includes(market)) return { error: 'mercado no válido: ' + MK.join(', ') };
-  if (!['1', 'X', '2', '1X', '12', 'X2', 'O', 'U', 'Y', 'N'].includes(outcome)) return { error: 'resultado no válido (1, X, 2, 1X, 12, X2, O, U, Y, N)' };
+  if (!['1', 'X', '2', '1X', '12', 'X2', 'O', 'U', 'E', 'Y', 'N'].includes(outcome)) return { error: 'resultado no válido (1, X, 2, 1X, 12, X2, O, U, E, Y, N)' };
   if (!(odds > 1)) return { error: 'cuota no válida' };
   let p: any = null;
   if (a.pick_id) { const { data } = await db.from('bt_picks').select('id,sport_key,home,away,league,commence_time').eq('id', String(a.pick_id)).maybeSingle(); p = data; }
@@ -107,8 +107,8 @@ const TOOLS = [
   { name: 'guardar_pick_claude', description: 'Guarda en la app Betting cada recomendación final de Claude para medir después si acierta. Una llamada por apuesta recomendada.', inputSchema: { type: 'object', required: ['pick_id', 'mercado', 'resultado', 'cuota'], properties: {
     pick_id: { type: 'string', description: 'pick_id del partido (de picks_proximos)' },
     mercado: { type: 'string', enum: ['h2h', 'dc', 'dnb', 'totals', 'btts', 'corners', 'cards'], description: 'h2h=1X2, dc=doble oportunidad, dnb=empate no válido, totals=goles más/menos, btts=ambos marcan, corners, cards=tarjetas' },
-    resultado: { type: 'string', description: '1, X, 2 (h2h y dnb); 1X, 12, X2 (dc); O=más, U=menos (totals, corners, cards); Y/N (btts)' },
-    linea: { type: 'number', description: 'Línea para totals, corners y cards (por ejemplo 2.5 o 9.5)' },
+    resultado: { type: 'string', description: '1, X, 2 (h2h y dnb); 1X, 12, X2 (dc); O=más, U=menos (totals, corners, cards); E=exactamente (solo corners, línea entera); Y/N (btts)' },
+    linea: { type: 'number', description: 'Línea para totals, corners y cards (por ejemplo 2.5 o 9.5). Los córners usan líneas enteras como bet365 (Más de 10, Exactamente 10, Menos de 10): O es más de N, U es menos de N, E es exactamente N' },
     cuota: { type: 'number', description: 'Cuota mínima o cuota de bet365 a la que lo recomiendas' },
     cuota_justa: { type: 'number', description: 'Tu cuota justa estimada' },
     seleccion: { type: 'string', description: 'Texto corto, por ejemplo "Más de 9,5 córners"' },
@@ -119,7 +119,7 @@ const TOOLS = [
 
 async function handle(m: any) {
   const id = m.id, ok = (result: unknown) => ({ jsonrpc: '2.0', id, result });
-  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.5.0' } });
+  if (m.method === 'initialize') return ok({ protocolVersion: (m.params && m.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'betting', version: '1.6.0' } });
   if (m.method === 'ping') return ok({});
   if (m.method === 'tools/list') return ok({ tools: TOOLS });
   if (m.method === 'tools/call') {

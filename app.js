@@ -845,7 +845,7 @@
   let picksMode = null, picksBusy = false, picksMsg = '', picksLoadedAt = 0, picksHelp = false;
   const ptxt = n => fnum(n, n % 1 ? (n * 10 % 1 ? 2 : 1) : 0);
   // Nombre completo de una selección según el mercado: h2h, totals (con su línea), dc, dnb o btts.
-  const OUT_NAME = (p, o, market, point) => market === 'corners' || market === 'cards' ? `${market === 'corners' ? 'Córners' : 'Tarjetas'}: ${o === 'O' ? 'Más' : 'Menos'} ${ptxt(point)}`
+  const OUT_NAME = (p, o, market, point) => market === 'corners' || market === 'cards' ? `${market === 'corners' ? 'Córners' : 'Tarjetas'}: ${o === 'E' ? 'Exactamente' : o === 'O' ? 'Más de' : 'Menos de'} ${ptxt(point)}`
     : market === 'dc' ? (o === '1X' ? `${p.home} o empate` : o === '12' ? `${p.home} o ${p.away}` : `${p.away} o empate`)
     : market === 'dnb' ? `${o === '1' ? p.home : p.away} (empate nula)`
     : market === 'btts' ? `Ambos marcan: ${o === 'Y' ? 'sí' : 'no'}`
@@ -863,7 +863,10 @@
   // Córners y tarjetas: líneas del modelo propio (p.cc) con el mismo formato que los demás mercados.
   const ccMk = (p, market, pt) => {
     const l = p.cc && p.cc[market] && p.cc[market].lines.find(x => +x.line === +pt);
-    return l ? { point: l.line, fair_odds: { O: l.fairOver, U: l.fairUnder }, fair_prob: { O: l.over / 100, U: l.under / 100 }, fair_src: ['modelo propio'], captured_at: p.cc.at } : null;
+    if (!l) return null;
+    const mk = { point: l.line, fair_odds: { O: l.fairOver, U: l.fairUnder }, fair_prob: { O: l.over / 100, U: l.under / 100 }, fair_src: ['modelo propio'], captured_at: p.cc.at };
+    if (l.exact != null) { mk.fair_odds.E = l.fairExact; mk.fair_prob.E = l.exact / 100; }
+    return mk;
   };
   const mkFor = (p, market, pt) => market === 'corners' || market === 'cards' ? ccMk(p, market, pt) : market === 'h2h' ? p
     : market === 'totals' ? (p.totals && +p.totals.point === +pt ? p.totals : ((p.extras && p.extras.lines) || []).find(l => +l.point === +pt))
@@ -1028,7 +1031,7 @@
   async function autoCC(baseMsg) {
     if (ccRunning) return;
     // Solo ligas con datos en football-data.co.uk (no Champions, Europa League ni selecciones) y sin cálculo reciente.
-    const fresh = p => p.cc && p.cc.at && Date.now() - new Date(p.cc.at).getTime() < 6 * 3600e3;
+    const fresh = p => p.cc && p.cc.v >= 2 && p.cc.at && Date.now() - new Date(p.cc.at).getTime() < 6 * 3600e3;
     const list = (pickCache.picks || []).filter(p => /^soccer/.test(p.sport_key || '') && !/uefa|nations|world|euro/.test(p.sport_key) && !fresh(p)).map(p => p.id);
     if (!list.length) return;
     ccRunning = true;
@@ -1118,7 +1121,7 @@
     : market === 'dc' ? (o === '1X' ? p.home.toUpperCase() + ' O X' : o === '12' ? 'CUALQUIERA' : 'X O ' + p.away.toUpperCase())
     : market === 'dnb' ? (o === '1' ? p.home : p.away).toUpperCase()
     : market === 'btts' ? (o === 'Y' ? 'SÍ' : 'NO') : OUT_NAME(p, o, market, point).toUpperCase();
-  const MK_KEYS = { corners: ['O', 'U'], cards: ['O', 'U'], totals: ['O', 'U'], btts: ['Y', 'N'], dc: ['1X', '12', 'X2'], dnb: ['1', '2'] };
+  const MK_KEYS = { corners: ['O', 'E', 'U'], cards: ['O', 'U'], totals: ['O', 'U'], btts: ['Y', 'N'], dc: ['1X', '12', 'X2'], dnb: ['1', '2'] };
 
   function pickCells(p, mk, market, thr, compact) {
     const keys = MK_KEYS[market] || outKeys(mk.fair_prob), pt = mk.point != null ? mk.point : null;
@@ -1233,14 +1236,16 @@
     if (!c) return `<div class="pksec">TARJETAS Y CÓRNERS</div>${btn('＋ CALCULAR TARJETAS Y CÓRNERS · SIN COSTE')}
       <div class="muted hint" style="margin-top:4px">Modelo propio con el historial de los dos equipos (football-data.co.uk). No gasta créditos ni consultas.</div>`;
     const tbl = (m, name, mkt) => {
-      const main = m.lines.reduce((a, l) => Math.abs(l.over - 50) < Math.abs(a.over - 50) ? l : a, m.lines[0]);
+      const int = !!(m.lines[0] && m.lines[0].int);
+      const main = int ? m.lines.reduce((a, l) => Math.abs(l.line - m.mu) < Math.abs(a.line - m.mu) ? l : a, m.lines[0]) : m.lines.reduce((a, l) => Math.abs(l.over - 50) < Math.abs(a.over - 50) ? l : a, m.lines[0]);
       const cell = (pr, fair, min, isMain, o, line) => { const c = pr >= 60 ? 'pos' : pr >= 35 ? 'yellow' : 'neg'; return `<button class="cc${isMain ? ' main' : ''}" data-pick="${esc(p.id)}" data-m="${mkt}" data-o="${o}" data-pt="${line}"><b class="${c}">${fnum(pr, 0)}%</b><div class="bar"><i class="bg-${c}" style="width:${pr}%"></i></div><span>justa ${odds(fair)}</span><span class="v cyan">≥ ${odds(min)}</span></button>`; };
+      const lab = l => `<div class="ccl">${int ? l.line : fnum(l.line, 1)}${l === main ? '<small>PRINCIPAL</small>' : ''}</div>`;
       return `<div style="margin-top:12px"><b>${name}</b> <span class="muted">· media esperada</span> <b>${fnum(m.mu, 1)}</b></div>
-        <div class="ccg"><span></span><div class="ch">MÁS DE</div><div class="ch">MENOS DE</div>${m.lines.map(l => `<div class="ccl">${fnum(l.line, 1)}${l === main ? '<small>PRINCIPAL</small>' : ''}</div>${cell(l.over, l.fairOver, l.minOver, l === main, 'O', l.line)}${cell(l.under, l.fairUnder, l.minUnder, l === main, 'U', l.line)}`).join('')}</div>`;
+        <div class="ccg${int ? ' ccg3' : ''}"><span></span><div class="ch">MÁS DE</div>${int ? '<div class="ch">EXACTAMENTE</div>' : ''}<div class="ch">MENOS DE</div>${m.lines.map(l => `${lab(l)}${cell(l.over, l.fairOver, l.minOver, l === main, 'O', l.line)}${int ? cell(l.exact, l.fairExact, l.minExact, l === main, 'E', l.line) : ''}${cell(l.under, l.fairUnder, l.minUnder, l === main, 'U', l.line)}`).join('')}</div>`;
     };
     return `<div class="pksec">TARJETAS Y CÓRNERS</div>
       ${tbl(c.corners, 'CÓRNERS DEL PARTIDO', 'corners')}${tbl(c.cards, 'TARJETAS DEL PARTIDO (AMARILLAS + ROJAS)', 'cards')}
-      <div class="muted hint" style="margin-top:6px">Toca una casilla para apuntarla. Cada casilla: probabilidad (<span class="pos">alta</span>, <span class="yellow">media</span>, <span class="neg">baja</span>), cuota justa y <span class="cyan">cuota mínima con valor</span> (con tu umbral). La línea marcada PRINCIPAL es la más equilibrada (cerca del 50 %). Compáralas con la cuota de bet365. Basado en ${c.matches} partidos de ${esc(c.teams.home)} en casa y ${esc(c.teams.away)} fuera (media de la liga: ${fnum(c.leagueMean.corners, 1)} córners y ${fnum(c.leagueMean.cards, 1)} tarjetas). No tiene en cuenta árbitro, bajas ni motivación: ajusta con las noticias.</div>
+      <div class="muted hint" style="margin-top:6px">Toca una casilla para apuntarla. Cada casilla: probabilidad (<span class="pos">alta</span>, <span class="yellow">media</span>, <span class="neg">baja</span>), cuota justa y <span class="cyan">cuota mínima con valor</span> (con tu umbral). Los córners usan líneas enteras como bet365: Más de N, Exactamente N y Menos de N. La línea marcada PRINCIPAL es la más cercana a la media esperada. Compáralas con la cuota de bet365. Basado en ${c.matches} partidos de ${esc(c.teams.home)} en casa y ${esc(c.teams.away)} fuera (media de la liga: ${fnum(c.leagueMean.corners, 1)} córners y ${fnum(c.leagueMean.cards, 1)} tarjetas). No tiene en cuenta árbitro, bajas ni motivación: ajusta con las noticias.</div>
       ${btn('↻ ACTUALIZAR')}`;
   }
   async function sendTG(id) {

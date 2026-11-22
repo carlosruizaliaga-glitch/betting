@@ -34,7 +34,7 @@ export function pickMessage(p, thr) {
     [['corners', 'Córners'], ['cards', 'Tarjetas']].forEach(([k, n]) => {
       const m = p.cc[k]; if (!m) return;
       out.push('', `<b>${n}</b> · media esperada ${String(m.mu).replace('.', ',')} <i>(modelo propio)</i>`);
-      m.lines.forEach(l => out.push(`${String(l.line).replace('.', ',')}: más ${Math.round(l.over)}% (≥ ${f2(l.minOver)}) · menos ${Math.round(l.under)}% (≥ ${f2(l.minUnder)})`));
+      m.lines.forEach(l => out.push(l.int ? `${l.line}: más ${Math.round(l.over)}% (≥ ${f2(l.minOver)}) · exacto ${Math.round(l.exact)}% (≥ ${f2(l.minExact)}) · menos ${Math.round(l.under)}% (≥ ${f2(l.minUnder)})` : `${String(l.line).replace('.', ',')}: más ${Math.round(l.over)}% (≥ ${f2(l.minOver)}) · menos ${Math.round(l.under)}% (≥ ${f2(l.minUnder)})`));
     });
   }
   out.push('', '<i>≥ = cuota mínima en tu casa para que haya valor. Mercado afinado de Pinnacle y Betfair.</i>');
