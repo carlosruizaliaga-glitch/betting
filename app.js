@@ -1155,29 +1155,44 @@
     return `<div class="pksec">TUS APUESTAS EN ESTE PARTIDO · ${eur(tot)}</div>${hBars(items)}`;
   }
   // Comparador: cuota de cada casa para el 1X2, la mejor de cada resultado marcada y en color según la cuota mínima con valor.
-  function oddsTable(p, thr) {
-    const keys = outKeys(p.fair_prob), rows = Object.entries(p.prices || {}).filter(([, r]) => keys.some(k => r[k] > 1));
+  // Los pares (mercado, selecciones) que tienen precios de varias casas: 1X2, más/menos, líneas extra y ambos marcan.
+  function oddsSets(p) {
+    const out = [{ mk: p, market: 'h2h', title: sportOf(p.sport_key) === 'soccer' ? '1X2' : 'GANADOR' }];
+    if (p.totals) out.push({ mk: p.totals, market: 'totals', title: `MÁS/MENOS ${ptxt(p.totals.point)} GOLES`, point: p.totals.point });
+    if (p.extras) {
+      (p.extras.lines || []).forEach(l => out.push({ mk: l, market: 'totals', title: `MÁS/MENOS ${ptxt(l.point)} GOLES`, point: l.point }));
+      if (p.extras.btts) out.push({ mk: p.extras.btts, market: 'btts', title: 'AMBOS MARCAN' });
+    }
+    return out;
+  }
+  // Comparador: cuota de cada casa para un mercado, la mejor de cada resultado en negrita y en color según la cuota mínima con valor.
+  function oddsTable(p, thr, set, hint) {
+    set = set || oddsSets(p)[0];
+    const mk = set.mk, keys = MK_KEYS[set.market] || outKeys(mk.fair_prob), rows = Object.entries(mk.prices || {}).filter(([, r]) => keys.some(k => r[k] > 1));
     if (rows.length < 2) return '';
     const best = {}; keys.forEach(k => { best[k] = Math.max(...rows.map(([, r]) => r[k] || 0)); });
     const mine = (settings().myBooks || []).map(x => x.toLowerCase());
-    return `<div class="pksec">COMPARADOR DE CUOTAS · 1X2</div>
-      <table class="tbl"><tr><th>CASA</th>${keys.map(k => `<th>${k === 'X' ? 'X' : k === '1' ? '1' : '2'}</th>`).join('')}</tr>
+    const head = k => set.market === 'totals' ? (k === 'O' ? 'MÁS' : 'MENOS') : set.market === 'btts' ? (k === 'Y' ? 'SÍ' : 'NO') : k;
+    return `<div class="pksec">COMPARADOR DE CUOTAS · ${set.title}</div>
+      <table class="tbl"><tr><th>CASA</th>${keys.map(k => `<th>${head(k)}</th>`).join('')}</tr>
       ${rows.sort((a, b) => keys.reduce((s2, k) => s2 + (b[1][k] || 0), 0) - keys.reduce((s2, k) => s2 + (a[1][k] || 0), 0)).map(([bk, r]) => `<tr><td>${mine.includes(bk.toLowerCase()) ? '★ ' : ''}${esc(bk)}</td>${keys.map(k => {
         const v = r[k]; if (!(v > 1)) return '<td class="num muted">—</td>';
-        const c = v >= minB365(p.fair_odds[k], thr) ? 'pos' : v >= breakEven(p.fair_odds[k]) ? 'yellow' : '';
+        const c = v >= minB365(mk.fair_odds[k], thr) ? 'pos' : v >= breakEven(mk.fair_odds[k]) ? 'yellow' : '';
         return `<td class="num ${c}">${v === best[k] ? '<b>' + odds(v) + '</b>' : odds(v)}</td>`; }).join('')}</tr>`).join('')}
-      <tr><td class="muted">Justa</td>${keys.map(k => `<td class="num muted">${odds(p.fair_odds[k])}</td>`).join('')}</tr></table>
-      <div class="muted hint" style="margin-top:4px">En negrita, la mejor de cada resultado. <span class="pos">Verde</span>: hay valor con tu umbral · <span class="yellow">naranja</span>: por encima de la justa. ★ = tus casas (Ajustes → Valor y casas). Bet365 no está en la fuente de cuotas: compáralo con el comprobador.</div>`;
+      <tr><td class="muted">Justa</td>${keys.map(k => `<td class="num muted">${odds(mk.fair_odds[k])}</td>`).join('')}</tr></table>
+      ${hint ? '<div class="muted hint" style="margin-top:4px">En negrita, la mejor de cada resultado. <span class="pos">Verde</span>: hay valor con tu umbral · <span class="yellow">naranja</span>: por encima de la justa. ★ = tus casas (Ajustes → Valor y casas). Bet365 no está en la fuente de cuotas: compáralo con el comprobador.</div>' : ''}`;
   }
+  const allOdds = (p, thr) => oddsSets(p).map((set, i) => oddsTable(p, thr, set, i === 0)).join('');
   function marketsBlock(p, thr) {
     const sec = (title, html) => `<div class="pksec">${title}</div>${html}`;
     const d = deriveMk(p.fair_prob), soccer = sportOf(p.sport_key) === 'soccer';
-    let h = sec(soccer ? 'RESULTADO FINAL (1X2)' : 'GANADOR', pickCells(p, p, 'h2h', thr, false));
+    const cmp = (mk, market, point) => oddsTable(p, thr, { mk, market, point, title: market === 'h2h' ? (soccer ? '1X2' : 'GANADOR') : market === 'btts' ? 'AMBOS MARCAN' : `MÁS/MENOS ${ptxt(point)} GOLES` }, market === 'h2h');
+    let h = sec(soccer ? 'RESULTADO FINAL (1X2)' : 'GANADOR', pickCells(p, p, 'h2h', thr, false) + cmp(p, 'h2h'));
     if (d) h += sec('DOBLE OPORTUNIDAD', pickCells(p, d.dc, 'dc', thr, false)) + sec('EMPATE NO VALE (SE DEVUELVE SI EMPATA)', pickCells(p, d.dnb, 'dnb', thr, false));
-    if (p.totals) h += sec(`MÁS/MENOS ${ptxt(p.totals.point)} GOLES`, pickCells(p, p.totals, 'totals', thr, false));
+    if (p.totals) h += sec(`MÁS/MENOS ${ptxt(p.totals.point)} GOLES`, pickCells(p, p.totals, 'totals', thr, false) + cmp(p.totals, 'totals', p.totals.point));
     if (p.extras) {
-      (p.extras.lines || []).forEach(l => { h += sec(`MÁS/MENOS ${ptxt(l.point)} GOLES`, pickCells(p, l, 'totals', thr, false)); });
-      if (p.extras.btts) h += sec('AMBOS MARCAN', pickCells(p, p.extras.btts, 'btts', thr, false));
+      (p.extras.lines || []).forEach(l => { h += sec(`MÁS/MENOS ${ptxt(l.point)} GOLES`, pickCells(p, l, 'totals', thr, false) + cmp(l, 'totals', l.point)); });
+      if (p.extras.btts) h += sec('AMBOS MARCAN', pickCells(p, p.extras.btts, 'btts', thr, false) + cmp(p.extras.btts, 'btts'));
       if (!p.extras.btts && !(p.extras.lines || []).length) h += `<div class="muted" style="margin-top:8px">PINNACLE NO OFRECE ESTOS MERCADOS EN ESTE PARTIDO.</div>`;
     } else if (soccer) {
       h += `<button class="block" style="margin-top:10px" data-extras="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>＋ AMBOS MARCAN Y MÁS/MENOS 0,5 / 1,5 / 3,5 · 2 CRÉDITOS</button>`;
@@ -1357,14 +1372,14 @@
             <div class="grow"><b>${esc(cellLabel(p, r.market, o, r.point))}</b><div class="muted">${mname(r)} · <span class="${pcl}">${fnum(pr, 0)} %</span> · justa ${odds(r.mk.fair_odds[o])}</div></div>
             <div style="text-align:right"><b class="pos">+${fnum(r.b.edge * 100, 1)} %</b><div class="muted">${esc(r.b.book)} ${odds(r.b.odds)} · ≥ ${odds(minB365(r.mk.fair_odds[o], thr))}</div></div></button>`; }).join('')}
         ${rows.length ? '<div class="muted hint" style="margin-top:6px">Toca una selección para apuntarla. «≥» es la cuota mínima en bet365 para que haya valor.</div>' : '<div class="muted hint" style="margin-top:6px">Ninguna cuota de tus casas supera la justa con tu umbral. Mira MERCADOS o COMPROBAR BET365 si tienes una cuota concreta.</div>'}
-        <div class="pksec">${soccer ? 'RESULTADO FINAL' : 'GANADOR'}</div>${pickCells(p, p, 'h2h', thr, true)}
-        ${p.totals ? `<div class="pksec">MÁS/MENOS ${ptxt(p.totals.point)} GOLES</div>${pickCells(p, p.totals, 'totals', thr, true)}` : ''}
+        <div class="pksec">${soccer ? 'RESULTADO FINAL' : 'GANADOR'}</div>${pickCells(p, p, 'h2h', thr, true)}${oddsTable(p, thr, oddsSets(p)[0], true)}
+        ${p.totals ? `<div class="pksec">MÁS/MENOS ${ptxt(p.totals.point)} GOLES</div>${pickCells(p, p.totals, 'totals', thr, true)}${oddsTable(p, thr, oddsSets(p)[1])}` : ''}
         ${my.length ? betsHere(my) : ''}
         ${p.model && p.model.advice ? `<div class="pksec">CONSEJO DEL MODELO</div><div class="hint" style="margin-top:6px;color:var(--text)">${esc(p.model.advice)}</div>` : ''}
         <button class="block" style="margin-top:12px" data-tg="${esc(p.id)}" ${picksBusy ? 'disabled' : ''}>✈ ENVIAR ESTE PARTIDO A TELEGRAM</button>`;
     } else if (pkTab === 'mk') body = marketsBlock(p, thr);
     else if (pkTab === 'cc') body = ccBlock(p, soccer);
-    else if (pkTab === 'od') body = oddsTable(p, thr) + sourcesBlock(p, soccer);
+    else if (pkTab === 'od') body = allOdds(p, thr) + sourcesBlock(p, soccer);
     else body = checkerBlock(p, d);
     return `<div class="row" style="margin-top:10px"><button class="small" id="pgBack">‹ PICKS</button><div class="grow"></div><span class="muted">${fmt({ weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase().replace(/\./g, '')} · ${fmt({ hour: '2-digit', minute: '2-digit' })}</span></div>
       <div class="pghead"><h2>${esc(p.home)} – ${esc(p.away)}</h2>
