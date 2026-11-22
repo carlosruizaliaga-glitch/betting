@@ -1015,7 +1015,8 @@
         (send ? (r.tgError ? ` · ⛔ ${errText(r.tgError)}` : ` · ✓ ENVIADO A TELEGRAM (${r.sent} MENSAJE${r.sent === 1 ? '' : 'S'})`) : '') +
         (off.length ? ` · SIN DATOS: ${off.join(', ')}` : '');
       render();
-      autoCC(picksMsg);
+      const base = picksMsg;
+      autoCC(base).then(() => autoMore(base));
     } catch (e) {
       picksBusy = false; picksMsg = '⛔ Sin conexión. Inténtalo de nuevo.'; render();
     }
@@ -1051,6 +1052,50 @@
     apply();
     if (ok) savePicks({ picks: pickCache.picks });
     if (!picksBusy) { picksMsg = baseMsg + (ok ? ` · TARJETAS Y CÓRNERS CALCULADOS EN ${ok} PARTIDOS (SIN COSTE)` : ''); render(); }
+  }
+
+  // Tras BUSCAR, si está activado en Ajustes: mercados extra (2 créditos de Odds API por partido) y modelo de API-Football
+  // (2 consultas por partido) de los partidos de fútbol de las próximas 48 h. Se para solo si los créditos bajan del 10 %.
+  let moreRunning = false;
+  async function autoMore(baseMsg) {
+    const st = settings();
+    if (moreRunning || (!st.autoExtras && !st.autoModel)) return;
+    const now = Date.now();
+    const ids = (pickCache.picks || []).filter(p => /^soccer/.test(p.sport_key || '') && new Date(p.commence_time).getTime() > now && new Date(p.commence_time).getTime() < now + 48 * 3600e3)
+      .sort((a, b) => a.commence_time.localeCompare(b.commence_time)).map(p => p.id);
+    if (!ids.length) return;
+    moreRunning = true;
+    const got = { extras: {}, model: {} };
+    let spent = 0, nEx = 0, nMd = 0, stop = '', modelOff = !st.autoModel, extrasOff = !st.autoExtras, i = 0;
+    const apply = () => (pickCache.picks || []).forEach(p => { if (got.extras[p.id]) p.extras = got.extras[p.id]; if (got.model[p.id]) p.model = got.model[p.id]; });
+    const say = () => { if (picksBusy) return; apply(); picksMsg = baseMsg + ` · MÁS DATOS (${i}/${ids.length})…`; render(); };
+    const worker = async () => {
+      while (i < ids.length && !stop) {
+        const id = ids[i++];
+        try {
+          if (!extrasOff) {
+            const r = await S.callPicks({ action: 'extras', pickId: id });
+            if (r.needConfirm || r.error === 'no_credits') { extrasOff = true; stop = stop || 'CRÉDITOS AL 10 %: PARADO'; }
+            else if (r.ok) { got.extras[id] = r.extras; spent += r.cost || 0; nEx++; if (r.credits) savePicks({ credits: r.credits }); }
+          }
+          if (!modelOff && !stop) {
+            const r = await S.callPicks({ action: 'model', pickId: id });
+            if (r.error === 'missing_football_key' || /request|limit|quota/i.test(String(r.error || ''))) { modelOff = true; }
+            else if (r.ok) { got.model[id] = r.model; nMd++; }
+          }
+        } catch (e) { /* sin conexión: queda lo ya cargado */ }
+        say();
+        if (extrasOff && modelOff) break;
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    moreRunning = false;
+    apply();
+    if (nEx || nMd) savePicks({ picks: pickCache.picks });
+    if (!picksBusy) {
+      picksMsg = baseMsg + (nEx || nMd ? ` · MÁS DATOS: ${nEx} MERCADOS EXTRA${spent ? ` (${spent} CRÉDITOS)` : ''} · ${nMd} MODELOS` : '') + (stop ? ' · ' + stop : '');
+      render();
+    }
   }
 
   // Preferencias de la pantalla PICKS (solo en este móvil; si no se pueden guardar, se usan las de por defecto).
@@ -2118,6 +2163,12 @@
         <div class="muted hint" style="margin-top:8px">${scanBudget(st)}</div>
         <label>MÁS/MENOS GOLES EN BÚSQUEDAS MANUALES</label>
         <div class="seg"><button data-tot="on" class="${st.totals !== false ? 'on' : ''}">CON MÁS/MENOS</button><button data-tot="off" class="${st.totals === false ? 'on' : ''}">SOLO GANADOR</button></div>
+        <label>AL BUSCAR, AÑADIR SOLO (PARTIDOS DE FÚTBOL DE LAS PRÓXIMAS 48 H)</label>
+        <div class="row" style="margin-top:4px"><span class="grow">AMBOS MARCAN Y MÁS/MENOS 0,5 / 1,5 / 3,5 · 2 CRÉDITOS POR PARTIDO</span>
+          <div class="seg"><button data-aex="off" class="${!st.autoExtras ? 'on' : ''}">NO</button><button data-aex="on" class="${st.autoExtras ? 'on' : ''}">SÍ</button></div></div>
+        <div class="row" style="margin-top:8px"><span class="grow">MODELO DE API-FOOTBALL · 2 CONSULTAS POR PARTIDO (100 AL DÍA)</span>
+          <div class="seg"><button data-amd="off" class="${!st.autoModel ? 'on' : ''}">NO</button><button data-amd="on" class="${st.autoModel ? 'on' : ''}">SÍ</button></div></div>
+        <div class="muted hint" style="margin-top:6px">Gasta bastante: con 30 partidos en dos días son unos 60 créditos de Odds API y 60 consultas de API-Football en cada BUSCAR. Se salta lo ya cargado (los extras duran 30 min y el modelo 6 h) y se para solo si los créditos bajan del 10 %. Solo con el botón BUSCAR, no en el envío automático.</div>
         <label>ENVÍO POR DEFECTO</label>
         <div class="seg"><button data-sm="value" class="${st.sendMode === 'value' ? 'on' : ''}">SOLO ⭐</button><button data-sm="all" class="${st.sendMode === 'all' ? 'on' : ''}">TODOS</button></div></div>`)}
       ${page('value', `
@@ -2210,6 +2261,8 @@
       if (await confirmDelete(`¿Quitar ${l.name} del escáner? Las apuestas y picks que ya tienes no cambian.`)) editScan(i, (x, scan) => scan.splice(i, 1));
     });
     view.querySelector('#addLeague').onclick = openLeaguePicker;
+    view.querySelectorAll('[data-aex]').forEach(b => b.onclick = () => saveSettings({ autoExtras: b.dataset.aex === 'on' }));
+    view.querySelectorAll('[data-amd]').forEach(b => b.onclick = () => saveSettings({ autoModel: b.dataset.amd === 'on' }));
     view.querySelectorAll('[data-tot]').forEach(b => b.onclick = () => saveSettings({ totals: b.dataset.tot === 'on' }));
     view.querySelectorAll('[data-mybook]').forEach(btn => btn.onclick = () => {
       const cur = new Set(settings().myBooks || []), n = btn.dataset.mybook;
