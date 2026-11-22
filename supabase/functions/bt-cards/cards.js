@@ -128,5 +128,5 @@ export function ccModel(table, home, away, thr) {
   const muC = (rate(H.hC, H.hn, mC) + rate(A.aC, A.an, mC)) / 2, muK = (rate(H.hK, H.hn, mK) + rate(A.aK, A.an, mK)) / 2;
   const n = Math.round(Math.min(H.hn, A.an));
   return { v: 2, teams: { home: th, away: ta }, matches: n, leagueMatches: Math.round(lg.n), leagueMean: { corners: r2(mC), cards: r2(mK) },
-    corners: marketInt(muC, disp(mC, lg.c2), thr, 4, 3), cards: market(muK, disp(mK, lg.k2), n, thr, 2, 1.5) };
+    corners: Object.assign(market(muC, disp(mC, lg.c2), n, thr, 3, 6.5), { ints: marketInt(muC, disp(mC, lg.c2), thr, 4, 3).lines }), cards: market(muK, disp(mK, lg.k2), n, thr, 2, 1.5) };
 }

@@ -20,12 +20,13 @@ assert.strictEqual(m2.teams.away, 'Real Delta');                       // «Delt
 assert(m.corners.mu > m2.corners.mu);                                  // Alfa saca más córneres
 assert(m2.cards.mu < m.cards.mu);                                      // con Delta hay menos tarjetas
 // Probabilidades coherentes: más/menos suman 100 y bajan al subir la línea
-m.corners.lines.forEach(l => assert(l.int && Math.abs(l.over + l.exact + l.under - 100) < 0.3));   // córners: líneas enteras (más, exactamente, menos)
+assert(m.corners.lines.every(l => !l.int && l.line % 1 === 0.5));   // se mantienen las líneas con medio punto
+m.corners.ints.forEach(l => assert(l.int && Math.abs(l.over + l.exact + l.under - 100) < 0.3));   // córners: líneas enteras (más, exactamente, menos)
 m.cards.lines.forEach(l => assert(Math.abs(l.over + l.under - 100) < 0.05));
-for (let k = 1; k < m.corners.lines.length; k++) assert(m.corners.lines[k].over < m.corners.lines[k - 1].over);
-assert(m.corners.lines.every(l => l.minOver > l.fairOver && l.minUnder > l.fairUnder && l.minExact > l.fairExact));
+for (let k = 1; k < m.corners.ints.length; k++) assert(m.corners.ints[k].over < m.corners.ints[k - 1].over);
+assert(m.corners.ints.every(l => l.minOver > l.fairOver && l.minUnder > l.fairUnder && l.minExact > l.fairExact));
 assert.strictEqual(m.v, 2);
-const ex = m.corners.lines.reduce((a, l) => a + l.exact, 0); assert(ex > 60 && ex <= 100);
+const ex = m.corners.ints.reduce((a, l) => a + l.exact, 0); assert(ex > 60 && ex <= 100);
 assert.strictEqual(C.ccModel(t, 'Nadie', 'Beta', 0.03), null);
 // binomial negativa: la mediana queda cerca de la media
 const o = C.overProb(10, 20, 9.5); assert(o > 0.45 && o < 0.65);
