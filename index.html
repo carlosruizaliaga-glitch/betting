@@ -278,6 +278,9 @@
     .chart { position: relative; }
     .chart svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
     .chart .tip { position: absolute; top: 0; pointer-events: none; background: var(--raise); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font-size: 14px; line-height: 1.35; white-space: nowrap; display: none; }
+    .card.list.bl { position: relative; overflow: hidden; }
+    .card.list.bl::after { content: ""; position: absolute; right: -18px; top: 50%; width: 120px; height: 120px; margin-top: -60px; background: url(icon-192-b4.png) center/contain no-repeat; opacity: .05; pointer-events: none; border-radius: 26px; transform: rotate(-8deg); }
+    :root[data-theme="light"] .card.list.bl::after { opacity: .07; }
     .datehdr { font: 600 11px/1 var(--mono); letter-spacing: .12em; color: var(--muted); margin: 18px 2px 4px; }
     .filters { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
     .filters select { font-size: 13px; padding: 9px 8px; }
@@ -476,9 +479,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=107"></script>
-  <script src="logic.js?v=107"></script>
-  <script src="store.js?v=107"></script>
-  <script src="app.js?v=107"></script>
+  <script src="version.js?v=108"></script>
+  <script src="logic.js?v=108"></script>
+  <script src="store.js?v=108"></script>
+  <script src="app.js?v=108"></script>
 </body>
 </html>

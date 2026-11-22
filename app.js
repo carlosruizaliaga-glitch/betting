@@ -594,13 +594,18 @@
     list.forEach(b => {
       if (b.date !== lastDate) {
         if (open) html += '</div>';
-        html += `<div class="datehdr">${fdateShort(b.date).split(" ")[0]} · ${fdate(b.date)}</div><div class="card list" style="margin-top:4px;padding:0 12px">`;
+        html += `<div class="datehdr">${fdateShort(b.date).split(" ")[0]} · ${fdate(b.date)}</div><div class="card list bl" style="margin-top:4px;padding:0 12px">`;
         lastDate = b.date; open = true;
       }
-      const p = L.profit(b);
+      const p = L.profit(b), closed = L.isClosed(b);
+      const hm = b.commence ? new Date(b.commence).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' }) : '';
+      const edge = b.fair > 1 && b.odds > 1 ? b.odds / b.fair - 1 : null;
+      const win = !closed && b.stake ? L.profit(Object.assign({}, b, { result: 'W' })) : null;
+      const facts = [hm ? '⏱ ' + hm : '', edge != null ? `VALOR <span class="${edge >= 0 ? 'pos' : 'neg'}">${spct(edge)}</span>` : '', b.reason ? esc(b.reason.toUpperCase()) : ''].filter(Boolean);
       html += `<div class="item tap" data-id="${b.id}"><div class="grow"><div class="ellipsis"><b>${esc(selText(b))}</b></div>
-        <div class="muted ellipsis">${esc(b.sport)} ${esc(b.type)} · ${esc(b.book)}${b.league ? ' · ' + esc(b.league) : ''}${b.tipster && st.tipsters.length > 1 ? ' · ' + esc(b.tipster) : ''}${b.level ? ' · N' + b.level : ''}</div></div>
-        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${L.isClosed(b) ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${b.autoSettled || b.match ? `<div class="muted">${esc(scoreOf(b))}${b.autoSettled ? ' · AUTO' : ''}</div>` : ''}${L.clvOf(b) != null ? `<div class="muted">CLV <span class="${cls(L.clvOf(b))}">${spct(L.clvOf(b))}</span></div>` : b.pickId ? `<div class="muted">${b.clvMissed ? 'SIN CIERRE' : 'CLV PENDIENTE'}</div>` : ''}</div></div>`;
+        <div class="muted ellipsis">${esc(b.sport)} ${esc(b.type)} · ${esc(b.book)}${b.league ? ' · ' + esc(b.league) : ''}${b.tipster && st.tipsters.length > 1 ? ' · ' + esc(b.tipster) : ''}${b.level ? ' · N' + b.level : ''}</div>
+        ${facts.length ? `<div class="muted faint ellipsis" style="font-size:11px;margin-top:3px">${facts.join(' · ')}</div>` : ''}</div>
+        <div class="num" style="text-align:right">${eur(b.stake)} @${odds(b.odds)}<div>${closed ? `<span class="${cls(p)}">${seur(p)}</span> ` : ''}${tag(b.result)}</div>${win != null ? `<div class="muted">GANARÍAS <span class="pos">${seur(win)}</span></div>` : ''}${b.autoSettled || b.match ? `<div class="muted">${esc(scoreOf(b))}${b.autoSettled ? ' · AUTO' : ''}</div>` : ''}${L.clvOf(b) != null ? `<div class="muted">CLV <span class="${cls(L.clvOf(b))}">${spct(L.clvOf(b))}</span></div>` : b.pickId ? `<div class="muted">${b.clvMissed ? 'SIN CIERRE' : 'CLV PENDIENTE'}</div>` : ''}</div></div>`;
     });
     if (open) html += '</div>';
     view.innerHTML = html;
