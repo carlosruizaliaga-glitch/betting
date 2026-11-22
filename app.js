@@ -123,7 +123,7 @@
   let tab = 'home';
   const filters = { book: '', sport: '', type: '', tipster: '', league: '', result: '' };
   let statsPeriod = 'TOTAL', statsBy = 'sport', statsTab = 'res', favThr = 0.5, statsSel = null;
-  let pickPage = null, pkTab = 'sum', pkListY = 0, pkDir = 0;   // partido abierto en Picks y pestaña dentro de su página
+  let pickPage = null, pkTab = 'sum', pkListY = 0, pkDir = 0, pkMDir = 0;   // partido abierto en Picks y pestaña dentro de su página
   let combo = [], comboOdds = 0;     // combinada en preparación desde el comprobador de Picks
   const view = document.getElementById('view');
   // ---------- Atrás (gesto o botón del móvil) ----------
@@ -404,7 +404,7 @@
   // ---------- Ficha del partido (bloque minimalista en la apuesta hecha desde un pick) ----------
   const scoreOf = b => b.match && b.match.ft ? `${b.match.ft[0]}–${b.match.ft[1]}` : String(b.score || '').replace('-', '–');
   const minStr = g => `${g.m}${g.x ? '+' + g.x : ''}'`;
-  function matchCard(b) {
+  function matchCard(b, probLabel) {
     const sn = b.snap || {}, m = b.match;
     const ev = ((b.legs && b.legs[0] && b.legs[0].event) || '').split(' – ');
     const home = sn.home || ev[0] || '', away = sn.away || ev[1] || '';
@@ -427,7 +427,7 @@
       const ks = ['1', 'X', '2'].filter(k => sn.probs[k] != null), tot = ks.reduce((a, k) => a + sn.probs[k], 0) || 1;
       probs = `<div class="mc-prob"><div class="bar">${ks.map(k => `<i class="k${k}" style="width:${(sn.probs[k] / tot * 100).toFixed(1)}%"></i>`).join('')}</div>
         <div class="lab">${ks.map(k => `<span>${k === 'X' ? 'EMPATE' : k === '1' ? '1' : '2'} <b>${fnum(sn.probs[k] * 100, 0)} %</b></span>`).join('')}</div>
-        <div class="muted" style="text-align:center">PROBABILIDAD JUSTA AL APOSTAR</div></div>`;
+        <div class="muted" style="text-align:center">${probLabel || 'PROBABILIDAD JUSTA AL APOSTAR'}</div></div>`;
     }
     const wait = ft && !m ? '<div class="muted hint" style="text-align:center;margin-top:6px">Goles, córners y tarjetas aparecen al completarse la ficha.</div>' : '';
     return `<div class="mcard">${head}<div class="mc-meta">${meta}</div>${goals}${stats ? `<div class="mc-stats">${stats}</div>` : ''}${probs}${wait}</div>`;
@@ -1357,7 +1357,7 @@
   function closePickPage() { pickPage = null; render(); window.scrollTo(0, pkListY); navBack(); }
 
   // Página de un partido: cabecera, resumen con lo que se puede apostar y pestañas con el detalle ordenado.
-  function pickPageHtml(p, st, my) {
+  function pickPageHtml(p, st, my, ids) {
     const soccer = sportOf(p.sport_key) === 'soccer', thr = st.threshold, d = deriveMk(p.fair_prob);
     const dt = new Date(p.commence_time), fmt = o => dt.toLocaleString('es-ES', Object.assign({ timeZone: 'Europe/Madrid' }, o));
     const rows = valueRows(p), mname = (r) => r.market === 'h2h' ? (soccer ? 'Resultado final' : 'Ganador') : r.market === 'btts' ? 'Ambos marcan' : `Más/menos ${ptxt(r.point)} goles`;
@@ -1381,13 +1381,16 @@
     else if (pkTab === 'cc') body = ccBlock(p, soccer);
     else if (pkTab === 'od') body = allOdds(p, thr) + sourcesBlock(p, soccer);
     body += checkerBlock(p, d);   // el comprobador de bet365 va al final de todas las pestañas
-    return `<div class="row" style="margin-top:10px"><button class="small" id="pgBack">‹ PICKS</button><div class="grow"></div><span class="muted">${fmt({ weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase().replace(/\./g, '')} · ${fmt({ hour: '2-digit', minute: '2-digit' })}</span></div>
-      <div class="pghead"><h2>${esc(p.home)} – ${esc(p.away)}</h2>
-        <div class="muted">${sportEmoji(p.sport_key)} ${esc(p.league)}${my.length ? ` · <span class="tag mine" data-openbet="${my[0].id}">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO · ${eur(tot)}</span>` : ''}</div></div>
+    const pos = ids.indexOf(p.id), card = matchCard({ snap: { home: p.home, away: p.away, league: p.league, probs: p.fair_prob }, commence: p.commence_time, league: p.league }, 'PROBABILIDAD JUSTA');
+    const mv = pkMDir ? (pkMDir > 0 ? ' slr' : ' sll') : '';
+    return `<div class="pgwrap${mv}"><div class="pgtop"><div class="row" style="margin-top:10px;gap:6px"><button class="small" id="pgBack">‹ PICKS</button><div class="grow"></div>
+        ${pos >= 0 ? `<button class="small" data-pgn="-1" ${pos === 0 ? 'disabled' : ''} aria-label="Partido anterior">‹</button><span class="muted num">${pos + 1} / ${ids.length}</span><button class="small" data-pgn="1" ${pos === ids.length - 1 ? 'disabled' : ''} aria-label="Partido siguiente">›</button>` : ''}</div>
+      <div style="margin-top:8px">${card}</div>
+      ${my.length ? `<div style="margin:8px 2px 0"><span class="tag mine" data-openbet="${my[0].id}">✓ ${my.length > 1 ? my.length + ' ' : ''}APOSTADO · ${eur(tot)}</span></div>` : ''}</div>
       <div class="seg pgtabs scroll-x">${tabs.map(([k, t]) => `<button data-pgt="${k}" class="${pkTab === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       ${picksMsg ? `<div class="muted" style="margin-top:8px">${esc(picksMsg)}</div>` : ''}
       <div class="card pgbody${pkDir ? (pkDir > 0 ? ' slr' : ' sll') : ''}">${body}</div>
-      <div class="muted" style="margin:8px 2px">PRECIO JUSTO: ${(p.fair_src || ['pinnacle']).map(s => s === 'betfair' ? 'BETFAIR' : 'PINNACLE').join(' + ')} · CAPTURA ${new Date(p.captured_at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</div>`;
+      <div class="muted" style="margin:8px 2px">PRECIO JUSTO: ${(p.fair_src || ['pinnacle']).map(s => s === 'betfair' ? 'BETFAIR' : 'PINNACLE').join(' + ')} · CAPTURA ${new Date(p.captured_at).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}</div></div>`;
   }
 
   function renderPicks() {
@@ -1405,29 +1408,6 @@
     // Apuestas que ya tienes en cada partido (para no repetir).
     const mine = {};
     bets().forEach(b => { const k = b.pickId || b.refPick; if (k) (mine[k] = mine[k] || []).push(b); });
-    const pg = pickPage && (pickCache.picks || []).find(x => x.id === pickPage);
-    if (pickPage && !pg) pickPage = null;
-    if (pg) {
-      view.innerHTML = pickPageHtml(adjPick(pg, st), st, mine[pg.id] || []);
-      pkDir = 0;
-      view.querySelector('#pgBack').onclick = closePickPage;
-      const tabKeys = Array.from(view.querySelectorAll('[data-pgt]')).map(b => b.dataset.pgt);
-      const goTab = (k, dir) => { pkTab = k; pkDir = dir; render(); };
-      view.querySelectorAll('[data-pgt]').forEach(b => b.onclick = () => goTab(b.dataset.pgt, tabKeys.indexOf(b.dataset.pgt) > tabKeys.indexOf(pkTab) ? 1 : -1));
-      const on = view.querySelector('.pgtabs .on'), bar = view.querySelector('.pgtabs');
-      if (on && bar) bar.scrollLeft = on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2;
-      // Deslizar el dedo a izquierda o derecha cambia de pestaña (no si empieza en las pestañas o en una tabla con scroll).
-      let sx = 0, sy = 0, ok = false;
-      view.ontouchstart = ev => { const t = ev.touches[0]; sx = t.clientX; sy = t.clientY; ok = ev.touches.length === 1 && !ev.target.closest('.pgtabs, .scroll-x, input, select, textarea'); };
-      view.ontouchend = ev => {
-        if (!ok) return; ok = false;
-        const t = ev.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy, i = tabKeys.indexOf(pkTab);
-        if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
-        const n = dx < 0 ? i + 1 : i - 1;
-        if (n >= 0 && n < tabKeys.length) { goTab(tabKeys[n], dx < 0 ? 1 : -1); window.scrollTo(0, 0); }
-      };
-      wirePicks(); return;
-    }
     const preFiltered = upcoming.filter(p => (!pv.sport || sportOf(p.sport_key) === pv.sport) && (!pv.league || p.league === pv.league) &&
       (!pv.day || (pv.day === 'later' ? dayOf(p) >= after : dayOf(p) === pv.day)));
     const nBet = preFiltered.filter(p => mine[p.id]).length, nNoBet = preFiltered.length - nBet;
@@ -1436,6 +1416,42 @@
       .sort(pv.sort === 'time' ? (a, b) => a.commence_time.localeCompare(b.commence_time) || a.league.localeCompare(b.league)
         : (a, b) => (pickHasValue(b) - pickHasValue(a)) || pickScore(b) - pickScore(a) || a.commence_time.localeCompare(b.commence_time));
     const nVal = filtered.filter(pickHasValue).length;
+    const pg = pickPage && (pickCache.picks || []).find(x => x.id === pickPage);
+    if (pickPage && !pg) pickPage = null;
+    if (pg) {
+      view.innerHTML = pickPageHtml(adjPick(pg, st), st, mine[pg.id] || [], list.map(x => x.id));
+      pkDir = 0; pkMDir = 0;
+      const ids = list.map(x => x.id);
+      const goPick = dir => {
+        const n = ids.indexOf(pickPage) + dir;
+        if (n < 0 || n >= ids.length) return false;
+        pickPage = ids[n]; pkMDir = dir; try { history.replaceState(navState(false), ''); } catch (e) { /* sin historial */ }
+        render(); window.scrollTo(0, 0); return true;
+      };
+      view.querySelectorAll('[data-pgn]').forEach(b => b.onclick = () => goPick(+b.dataset.pgn));
+      view.querySelector('#pgBack').onclick = closePickPage;
+      const tabKeys = Array.from(view.querySelectorAll('[data-pgt]')).map(b => b.dataset.pgt);
+      const goTab = (k, dir) => { pkTab = k; pkDir = dir; render(); };
+      view.querySelectorAll('[data-pgt]').forEach(b => b.onclick = () => goTab(b.dataset.pgt, tabKeys.indexOf(b.dataset.pgt) > tabKeys.indexOf(pkTab) ? 1 : -1));
+      const on = view.querySelector('.pgtabs .on'), bar = view.querySelector('.pgtabs');
+      if (on && bar) bar.scrollLeft = on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2;
+      // Deslizar el dedo a izquierda o derecha cambia de pestaña (no si empieza en las pestañas o en una tabla con scroll).
+      let sx = 0, sy = 0, zone = '';
+      view.ontouchstart = ev => {
+        const t = ev.touches[0]; sx = t.clientX; sy = t.clientY;
+        zone = ev.touches.length !== 1 || ev.target.closest('.pgtabs, .scroll-x, input, select, textarea') ? '' : ev.target.closest('.pgbody') ? 'tab' : ev.target.closest('.pgtop') ? 'match' : '';
+      };
+      view.ontouchend = ev => {
+        const z = zone; zone = '';
+        if (!z) return;
+        const t = ev.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+        if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+        if (z === 'match') { goPick(dx < 0 ? 1 : -1); return; }
+        const i = tabKeys.indexOf(pkTab), n = dx < 0 ? i + 1 : i - 1;
+        if (n >= 0 && n < tabKeys.length) { goTab(tabKeys[n], dx < 0 ? 1 : -1); window.scrollTo(0, 0); }
+      };
+      wirePicks(); return;
+    }
     const ls = pickCache.lastScan;
     const chip = (k, v, label) => `<button data-pf="${k}" data-v="${v}" class="${pv[k] === v ? 'on' : ''}">${label}</button>`;
 

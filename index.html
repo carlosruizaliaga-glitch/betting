@@ -353,6 +353,8 @@
     .pgtabs { margin-top: 10px; overflow-x: auto; flex-wrap: nowrap; }
     .pgtabs button { flex: none; padding: 9px 11px; white-space: nowrap; }
     .pgbody { margin-top: 10px; padding-top: 10px; }
+    .pgwrap.slr { animation: pgin-r .22s ease-out; } .pgwrap.sll { animation: pgin-l .22s ease-out; }
+    .pgwrap .small:disabled { opacity: .35; }
     .pgbody.slr { animation: pgin-r .22s ease-out; } .pgbody.sll { animation: pgin-l .22s ease-out; }
     @keyframes pgin-r { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
     @keyframes pgin-l { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
@@ -497,9 +499,9 @@
     <button data-tab="stats"><span class="ic" data-ico="chart"></span>STATS</button>
     <button data-tab="settings"><span class="ic" data-ico="sliders"></span>AJUSTES</button>
   </nav>
-  <script src="version.js?v=113"></script>
-  <script src="logic.js?v=113"></script>
-  <script src="store.js?v=113"></script>
-  <script src="app.js?v=113"></script>
+  <script src="version.js?v=114"></script>
+  <script src="logic.js?v=114"></script>
+  <script src="store.js?v=114"></script>
+  <script src="app.js?v=114"></script>
 </body>
 </html>
