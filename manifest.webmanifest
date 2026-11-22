@@ -1,7 +1,8 @@
 {
   "name": "Betting",
   "short_name": "Betting",
-  "description": "Registro de apuestas, estadísticas y picks 1X2",
+  "description": "Registro de apuestas, estadísticas, picks y comparador de cuotas",
+  "categories": ["finance", "sports"],
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
