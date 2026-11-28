@@ -5,6 +5,26 @@ const f2 = x => (Math.round(x * 100) / 100).toFixed(2).replace('.', ',');
 const pc = x => Math.round(x * 100) + '%';
 const minOdds = (fair, thr) => Math.ceil(fair * (1 + thr) * 100 - 1e-9) / 100;
 
+// Aviso de valor solo con "mis casas": la mejor selección con valor de cada mercado (1X2 y Más/Menos) usando el precio de esas casas.
+export function digestMessage(picks, mine, thr) {
+  const set = new Set((mine || []).map(x => String(x).toLowerCase())), hits = [];
+  (picks || []).forEach(p => [['h2h', p], ['totals', p.totals]].forEach(([mk, m]) => {
+    if (!m || !m.prices || !m.fair_odds) return;
+    let best = null;
+    Object.entries(m.prices).forEach(([bk, row]) => {
+      if (!set.has(bk.toLowerCase())) return;
+      Object.keys(m.fair_odds).forEach(k => { const o = row[k]; if (o > 1) { const e = o / m.fair_odds[k] - 1; if (e * 100 >= thr && (!best || e > best.e)) best = { k, bk, o, e }; } });
+    });
+    if (best) hits.push({ p, mk, m, ...best });
+  }));
+  const name = h => h.mk === 'totals' ? `${h.k === 'O' ? 'Más' : 'Menos'} de ${String(h.m.point).replace('.', ',')} goles` : h.k === 'X' ? 'Empate' : h.k === '1' ? h.p.home : h.p.away;
+  const when = iso => new Date(iso).toLocaleString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const head = `<b>⭐ VALOR EN TUS CASAS</b> · ${esc(mine.join(', '))} · umbral +${String(thr).replace('.', ',')}%`;
+  if (!hits.length) return head + '\n\nSin valor en tus casas en las próximas 72 h.';
+  hits.sort((a, b) => a.p.commence_time.localeCompare(b.p.commence_time));
+  return head + '\n\n' + hits.slice(0, 40).map(h => `🕕 <b>${esc(h.p.home)} – ${esc(h.p.away)}</b> · ${esc(h.p.league)} · ${esc(when(h.p.commence_time))}\n${esc(name(h))}: <b>${esc(h.bk)} ${f2(h.o)}</b> (+${(h.e * 100).toFixed(1).replace('.', ',')} %) · justa ${f2(h.m.fair_odds[h.k])}`).join('\n\n');
+}
+
 export function pickMessage(p, thr) {
   const out = [];
   const when = new Date(p.commence_time).toLocaleString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });

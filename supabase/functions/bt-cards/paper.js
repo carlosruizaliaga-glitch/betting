@@ -57,6 +57,15 @@ export function settle(market, outcome, point, r) {
   return null;
 }
 
+// Partidos terminados de API-Football (/fixtures?date=) en el mismo formato de filas que resultRows (sin córners ni tarjetas).
+const DONE = ['FT', 'AET', 'PEN'];
+export function apifRows(list) {
+  return (list || []).filter(f => f && f.fixture && f.fixture.status && DONE.includes(f.fixture.status.short) && f.teams).map(f => {
+    const ft = f.score && f.score.fulltime && f.score.fulltime.home != null ? f.score.fulltime : f.goals;
+    return [String(f.fixture.date).slice(0, 10), f.teams.home.name, f.teams.away.name, +ft.home, +ft.away, null, null];
+  }).filter(r => Number.isFinite(r[3]) && Number.isFinite(r[4]));
+}
+
 // Beneficio de una apuesta en papel a 1 unidad.
 export const unitProfit = (result, odds) => result === 'W' ? odds - 1 : result === 'L' ? -1 : 0;
 

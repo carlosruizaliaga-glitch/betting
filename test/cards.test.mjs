@@ -71,3 +71,20 @@ console.log('OK modelo de tarjetas y córneres');
   assert(rep.includes('Apuestas: <b>2</b>') && rep.includes('+0,00 €') && rep.includes('por debajo de la cuota justa') && rep.includes('Picks en papel') && rep.includes('Picks de Claude'));
   console.log('OK resultados, cierre en papel e informe semanal');
 }
+{
+  const P = await import('../supabase/functions/bt-cards/paper.js');
+  const TG = await import('../supabase/functions/bt-cards/tg.js');
+  // API-Football → filas de resultados: solo partidos terminados, marcador a los 90 minutos
+  const rows = P.apifRows([
+    { fixture: { date: '2026-11-26T20:00:00+00:00', status: { short: 'FT' } }, teams: { home: { name: 'Bayern München' }, away: { name: 'Arsenal' } }, goals: { home: 2, away: 1 }, score: { fulltime: { home: 2, away: 1 } } },
+    { fixture: { date: '2026-11-26T20:00:00+00:00', status: { short: 'NS' } }, teams: { home: { name: 'Celtic' }, away: { name: 'Roma' } }, goals: { home: null, away: null } }]);
+  assert.strictEqual(rows.length, 1);
+  const m = P.findResult(rows, 'Bayern Munich', 'Arsenal', '2026-11-26');
+  assert.strictEqual(P.settle('h2h', '1', null, m), 'W'); assert.strictEqual(P.settle('dc', 'X2', null, m), 'L'); assert.strictEqual(P.settle('totals', 'U', 3.5, m), 'W');
+  // Aviso con "mis casas": solo cuenta el precio de las casas elegidas
+  const pk = { home: 'Rojo', away: 'Azul', league: 'LaLiga', commence_time: '2026-11-29T20:00:00Z', fair_odds: { 1: 2, X: 3.5, 2: 4 }, prices: { Unibet: { 1: 1.9, X: 3.7, 2: 4 }, Marathonbet: { 1: 2.3, X: 3.3, 2: 3.8 } } };
+  const msg = TG.digestMessage([pk], ['Unibet'], 3);
+  assert(msg.includes('Empate: <b>Unibet 3,70</b>') && !msg.includes('Marathonbet'));
+  assert(TG.digestMessage([pk], ['Betsson'], 3).includes('Sin valor en tus casas'));
+  console.log('OK cierre con API-Football y aviso con mis casas');
+}

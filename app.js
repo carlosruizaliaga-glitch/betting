@@ -718,6 +718,7 @@
       const sg = $('#sugg'), sug0 = b.fair && b.legs.length === 1 ? L.suggestStake(o, fairAdj(b.fair), avail, st.unit, kellyEff(st.kelly)) : null;
       const sameOdds = sugFromChecker && Math.abs(o - (prefill.odds || 0)) < 1e-9;
       const sug = sug0 && sameOdds ? Object.assign({}, sug0, { level: sugFromChecker.noValue ? 0 : sugFromChecker.level, stake: L.stakeFor(avail, sugFromChecker.level, st.unit) }) : sug0;
+      const okBtn = $('#ok'); if (okBtn) { const bad = b.fair > 1 && b.legs.length === 1 && o > 1 && o < minB365(b.fair, st.threshold); okBtn.textContent = bad ? 'GUARDAR SIN VALOR' : 'GUARDAR'; okBtn.classList.toggle('danger', bad); okBtn.classList.toggle('primary', !bad); }
       if (!sug) { sg.style.display = 'none'; return; }
       sg.style.display = '';
       const fb = sameOdds && sugFromChecker.noValue ? sugFromChecker : null;     // sin valor: se propone el mínimo por si apuestas igualmente
@@ -764,7 +765,7 @@
       if (b.result === 'CO') $('#co').focus();
     });
     $('#cancel').onclick = closeSheet;
-    $('#ok').onclick = () => {
+    $('#ok').onclick = async () => {
       b.legs = b.legs.map(l => ({ event: l.event || '', sel: (l.sel || '').trim(), odds: isFinite(l.odds) ? l.odds : null }))
         .filter((l, i) => i === 0 || l.sel || l.odds);
       const o = totalOdds(), s = pnum($('#stake').value);
@@ -773,6 +774,16 @@
       if (!(s > 0)) { toast('Elige nivel o escribe el stake'); return; }
       if (b.result === 'CO' && !(pnum($('#co').value) >= 0)) { toast('Pon el importe del cash out'); return; }
       if (b.legs.length === 1) b.legs[0].odds = o;
+      // Freno: apuesta simple con cuota justa por debajo de la cuota mínima con valor → hay que confirmarlo.
+      if (b.fair > 1 && b.legs.length === 1 && !$('#bonus').checked && (isNew || Math.abs(o - (existing.odds || 0)) > 1e-9)) {
+        const minV = minB365(b.fair, st.threshold), e = o / fairAdj(b.fair) - 1;
+        if (o < minV) {
+          if (!await ask(`SIN VALOR: tu cuota ${odds(o)} está por debajo de la mínima con valor (${odds(minV)}).
+${e < 0 ? `A la larga pierdes un ${fnum(-e * 100, 1)} % de lo apostado (${eur(s * -e)} de media en esta apuesta).` : `Ventaja de ${fnum(e * 100, 1)} %, por debajo de tu umbral del ${fnum(st.threshold, st.threshold % 1 ? 1 : 0)} %.`}
+¿Apuntarla igualmente?`, { ok: 'APUNTAR IGUAL', cancel: 'NO APOSTAR', danger: true })) return;
+          b.noValueOk = true;
+        } else delete b.noValueOk;
+      }
       const wasClosed = existing && L.isClosed(existing);
       Object.assign(b, {
         odds: o, stake: L.r2(s), date: $('#date').value || today(), league: $('#league').value.trim(),
@@ -838,7 +849,7 @@
       due.forEach(({ k, x }) => {
         const v = r.results[x.id]; if (!v) return;
         if (v.result) S.put(k, Object.assign({}, x, { result: v.result, score: v.score, settledAt: Date.now() }));
-        else if (v.reason === 'league_not_covered' || Date.now() - new Date(x.commence).getTime() > 6 * 864e5) S.put(k, Object.assign({}, x, { result: 'NA' }));
+        else if ((v.reason === 'league_not_covered' && Date.now() - new Date(x.commence).getTime() > 2 * 864e5) || Date.now() - new Date(x.commence).getTime() > 6 * 864e5) S.put(k, Object.assign({}, x, { result: 'NA' }));
       });
     } catch (e) { /* sin conexión: se intenta más tarde */ }
   }
@@ -985,10 +996,15 @@
   };
   const errText = e => ERRORS[e] || ('Error: ' + e);
 
+  // Por debajo de este saldo se paran solos los extras automáticos (cada partido gasta 2 créditos).
+  const LOW_CREDITS = 50;
+  const lowCredits = () => !!(pickCache.credits && pickCache.credits.remaining != null && pickCache.credits.remaining < LOW_CREDITS);
+  // The Odds API renueva los créditos el día 1 de cada mes.
+  const renewTxt = () => { const d = new Date(); return `1/${d.getMonth() === 11 ? 1 : d.getMonth() + 2}`; };
   function creditsHtml(c) {
     if (!c || c.remaining == null) return '<span class="muted">CRÉDITOS —</span>';
     const quota = (c.used || 0) + c.remaining, share = quota ? c.remaining / quota : 1;
-    return `CRÉDITOS <b class="${share < 0.1 ? 'neg' : share < 0.25 ? 'yellow' : 'pos'}">${c.remaining}</b><span class="muted"> / ${quota}</span>`;
+    return `CRÉDITOS <b class="${share < 0.1 ? 'neg' : share < 0.25 ? 'yellow' : 'pos'}">${c.remaining}</b><span class="muted"> / ${quota} · SE RENUEVAN EL ${renewTxt()}</span>${c.remaining < LOW_CREDITS && settings().autoExtras ? '<br><span class="yellow">EXTRAS AUTOMÁTICOS EN PAUSA HASTA QUE SE RENUEVEN</span>' : ''}`;
   }
 
   async function refreshPicks() {
@@ -1002,7 +1018,10 @@
     if (picksBusy) return;
     picksBusy = true; picksMsg = send ? 'BUSCANDO PARTIDOS Y ENVIANDO…' : 'BUSCANDO PARTIDOS…'; render();
     try {
-      const r = await S.callPicks({ action: 'scan', mode: picksMode, send, confirmLow: !!confirmLow });
+      // Con "mis casas" en Ajustes, el aviso de valor lo prepara bt-cards solo con esas casas.
+      const mine = send && picksMode !== 'all' && (settings().myBooks || []).length > 0;
+      const r = await S.callPicks({ action: 'scan', mode: picksMode, send: send && !mine, confirmLow: !!confirmLow });
+      if (mine && r && r.ok) { try { const d = await S.callCards({ action: 'digest' }); r.sent = d.ok ? 1 : 0; r.tgError = d.ok ? null : (d.error || 'telegram'); } catch (e) { r.tgError = 'Sin conexión'; } }
       picksBusy = false;
       if (r.needConfirm) {
         const left = r.credits.remaining - r.cost;
@@ -1070,7 +1089,8 @@
     if (!ids.length) return;
     moreRunning = true;
     const got = { extras: {}, model: {} };
-    let spent = 0, nEx = 0, nMd = 0, stop = '', modelOff = !st.autoModel, extrasOff = !st.autoExtras, i = 0;
+    let spent = 0, nEx = 0, nMd = 0, stop = '', modelOff = !st.autoModel, extrasOff = !st.autoExtras || lowCredits(), i = 0;
+    if (extrasOff && modelOff) { moreRunning = false; return; }
     const apply = () => (pickCache.picks || []).forEach(p => { if (got.extras[p.id]) p.extras = got.extras[p.id]; if (got.model[p.id]) p.model = got.model[p.id]; });
     const say = () => { if (picksBusy) return; apply(); picksMsg = baseMsg + ` · MÁS DATOS (${i}/${ids.length})…`; render(); };
     const worker = async () => {
@@ -1637,6 +1657,21 @@
         <td class="num ${cls(r.profit)}">${r.n ? (r.profit > 0 ? '+' : '') + mny(r.profit) : '—'}</td><td class="num ${cls(r.yield)}">${r.n ? spct(r.yield, 0) : '—'}</td></tr>`).join('')}</table>`;
   }
 
+  // Resumen: los grupos (liga, mercado, cuota, casa, anticipación, ventaja) con mejor y peor CLV, con al menos 5 apuestas.
+  function whereWin(bs, thr) {
+    const mkName = b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)';
+    const dims = [['LIGA', b => b.league], ['MERCADO', mkName], ['CUOTA', b => L.oddsRange(+b.odds)], ['CASA', b => b.book], ['ANTELACIÓN', L.hourBucket],
+      ['VENTAJA', b => { const e = L.edgeAtBet(b); return e == null ? null : e * 100 >= thr ? 'CON VALOR' : e >= 0 ? 'POCO VALOR' : 'BAJO JUSTA'; }]];
+    const rows = [];
+    dims.forEach(([d, fn]) => L.clvBy(bs, fn).forEach(r => { if (r.n >= 5 && r.key !== '—' && r.avg != null) rows.push(Object.assign({}, r, { key: `${d} · ${r.key}` })); }));
+    if (!rows.length) return '<div class="muted">Hacen falta al menos 5 apuestas con CLV en un mismo grupo.</div>';
+    rows.sort((a, b) => b.avg - a.avg);
+    const good = rows.filter(r => r.avg > 0).slice(0, 3), bad = rows.filter(r => r.avg < 0).slice(-3).reverse();
+    return `<div class="concl">El CLV dice si eliges bien aunque el resultado aún sea suerte. Repite lo de arriba y evita lo de abajo.</div>
+      <div class="pksec">DONDE ELIGES BIEN</div>${good.length ? clvTable(good) : '<div class="muted">Ningún grupo con CLV positivo todavía.</div>'}
+      <div class="pksec">DONDE PIERDES</div>${bad.length ? clvTable(bad) : '<div class="muted">Ningún grupo con CLV negativo.</div>'}
+      <div class="muted hint" style="margin-top:6px">Solo grupos con 5 apuestas o más. Con menos de 30 en un grupo, tómalo como pista, no como prueba.</div>`;
+  }
   // Tabla de fiabilidad de la cuota justa: n, error medio y sesgo (en puntos de probabilidad).
   function driftTable(rows) {
     if (!rows.length) return '<div class="muted">SIN APUESTAS CON CIERRE TODAVÍA</div>';
@@ -2041,12 +2076,16 @@
         refs: [{ v: 0, label: '0 %' }, { v: 0.01, label: 'OBJ +1 %', col: 'var(--yellow)' }],
         tip: p => `${fdate(p.date)} · ${p.n} APUESTAS<br>MEDIA <b class="${cls(p.value)}">${spct(p.value, 2)}</b> · ${esc(selText(p.bet))} <span class="${cls(p.clv)}">${spct(p.clv, 1)}</span>` })}
         <div class="muted hint" style="margin-top:6px">Si la línea se asienta por encima de la amarilla (+1 %) con muchas apuestas, el sistema funciona.</div></div>
+      <h2>DÓNDE GANAS DE VERDAD</h2>
+      <div class="card">${whereWin(bs, st0.threshold)}</div>
       <h2>CLV SEGÚN TU VENTAJA AL APOSTAR</h2>
       <div class="card">${clvTable(L.clvBy(bs, b => { const e = L.edgeAtBet(b); return e == null ? null : e * 100 >= st0.threshold ? EDGE_KEYS[0] : e >= 0 ? EDGE_KEYS[1] : EDGE_KEYS[2]; }, EDGE_KEYS), true)}</div>
       <h2>CLV POR LIGA</h2>
       <div class="card">${clvTable(L.clvBy(bs, b => b.league))}</div>
       <h2>CLV POR MERCADO</h2>
       <div class="card">${clvTable(L.clvBy(bs, b => ({ totals: 'MÁS/MENOS', btts: 'AMBOS MARCAN', dc: 'DOBLE OPORT.', dnb: 'EMPATE NO VALE' })[b.pickMarket] || 'GANADOR (1X2)'))}</div>
+      <h2>CLV POR CUOTA</h2>
+      <div class="card">${clvTable(L.clvBy(bs, b => L.oddsRange(+b.odds), L.ODDS_RANGES.map(r => r.key)))}</div>
       <h2>CLV SEGÚN LO PRONTO QUE APUESTAS</h2>
       <div class="card">${clvTable(L.clvBy(bs, L.hourBucket, L.HOUR_KEYS), true)}</div>
       <h2>FIABILIDAD DE LA CUOTA JUSTA</h2>
@@ -2058,7 +2097,9 @@
 
     const secDisc = `
       <h2>CUOTA FRENTE A LA JUSTA</h2>
-      <div class="card">${concl(cDisc)}
+      <div class="card">${concl(cDisc)}${(() => { const mk = today().slice(0, 7), nv = bs.filter(b => (b.date || '').slice(0, 7) === mk && b.fair > 1 && b.odds > 1 && (b.legs || []).length <= 1 && !b.bonus && b.odds < minB365(b.fair, st0.threshold));
+          const cost = nv.reduce((a, b) => a + Math.min(0, b.odds / fairAdj(b.fair) - 1) * (+b.stake || 0), 0);
+          return kv('ESTE MES SIN VALOR', `<b class="${nv.length ? 'neg' : 'pos'}">${nv.length}</b> apuestas · coste esperado <b class="${cost < 0 ? 'neg' : ''}">${seur(cost)}</b>`); })()}
         ${bfm.length ? `<table class="tbl"><tr><th>MES</th><th>N</th><th>BAJO JUSTA</th><th>VENTAJA MEDIA</th></tr>
           ${bfm.map(r => `<tr><td>${r.key.slice(5)}/${r.key.slice(2, 4)}</td><td class="num">${r.n}</td><td class="num ${r.below > 0.5 ? 'neg' : 'pos'}">${pct(r.below, 0)}</td><td class="num ${cls(r.avgEdge)}">${spct(r.avgEdge, 1)}</td></tr>`).join('')}</table>` : ''}
         <div class="muted hint" style="margin-top:6px">El objetivo es que "bajo justa" baje con el tiempo: cada apuesta por debajo de la justa cuesta dinero a la larga.</div></div>
@@ -2280,7 +2321,7 @@
       <h2>MIS CASAS</h2>
       <div class="card"><label style="margin-top:0">DÓNDE PUEDES APOSTAR · SI NO MARCAS NINGUNA SE USAN TODAS</label>
         <div class="chips" style="flex-wrap:wrap">${BOOK_LIST.map(n => `<button type="button" data-mybook="${esc(n)}" class="${(st.myBooks || []).includes(n) ? 'on' : ''}">${esc(n)}</button>`).join('')}</div>
-        <div class="muted hint" style="margin-top:6px">La mejor cuota y el ⭐ de Picks se calculan solo con las casas marcadas. Bet365 no entra en la búsqueda: para ella usa la cuota mínima «≥» o escribe su cuota al apuntar. Se aplica a las búsquedas nuevas.</div></div>
+        <div class="muted hint" style="margin-top:6px">La mejor cuota y el ⭐ de Picks y de los avisos de Telegram se calculan solo con las casas marcadas. Bet365 no entra en la búsqueda: para ella usa la cuota mínima «≥» o escribe su cuota al apuntar. Se aplica a las búsquedas nuevas.</div></div>
       <h2>UMBRAL Y MARGEN</h2>
       <div class="card"><label style="margin-top:0">UMBRAL DE VALOR %</label><input id="thr" inputmode="decimal" value="${fnum(st.threshold, st.threshold % 1 ? 1 : 0)}" style="max-width:120px">
         <div class="muted hint" style="margin-top:6px">Un pick cuenta como ⭐ si la mejor cuota supera la justa en este porcentaje o más.</div>

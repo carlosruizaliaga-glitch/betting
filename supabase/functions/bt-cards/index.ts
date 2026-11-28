@@ -4,10 +4,12 @@
 //   send    { pickId }  → envía el partido con todos sus mercados a Telegram
 //   results { items:[{id, sport_key, home, away, date, market, outcome, point}] } → { id: {result, score} } para cerrar apuestas en papel
 //   weekly  (o { action:'weekly', cronKey } desde pg_cron) → informe semanal a Telegram
+//   digest  → aviso de valor solo con "mis casas" (Ajustes) de los partidos de las próximas 72 h
+//   paper   ({ action:'paper', cronKey } desde pg_cron, cada hora) → cierra picks en papel y de Claude con API-Football
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { pickMessage } from './tg.js';
+import { pickMessage, digestMessage } from './tg.js';
 import { LEAGUES, seasonCode, prevSeason, parseCsv, buildTable, mergeTables, ccModel } from './cards.js';
-import { resultRows, findResult, settle, weeklyReport } from './paper.js';
+import { resultRows, findResult, settle, weeklyReport, apifRows } from './paper.js';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, apikey, authorization, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -81,6 +83,51 @@ async function results(items: any[]) {
   return json({ results: out });
 }
 
+async function digest() {
+  const { data: row } = await db.from('bt_items').select('data').eq('id', 'settings').maybeSingle();
+  const mine = ((row && row.data && row.data.myBooks) || []).map(String);
+  if (!mine.length) return json({ error: 'no_books' });
+  const now = new Date(), to = new Date(now.getTime() + 72 * 3600e3);
+  const { data: picks } = await db.from('bt_picks').select('home,away,league,commence_time,fair_odds,prices,totals').gte('commence_time', now.toISOString()).lte('commence_time', to.toISOString()).order('commence_time').limit(400);
+  return json(await telegram(digestMessage(picks || [], mine, (await threshold()) * 100)));
+}
+
+// Picks en papel y de Claude sin cerrar (sobre todo Champions y Europa League, que football-data no cubre): marcador de
+// API-Football. El plan gratis solo deja consultar hoy y ayer: 1 consulta por fecha, como mucho 2 fechas por pasada.
+async function apif(path: string, params: Record<string, string>) {
+  const u = new URL('https://v3.football.api-sports.io' + path);
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  const res = await fetch(u, { headers: { 'x-apisports-key': env('API_FOOTBALL_KEY') } });
+  const d = await res.json().catch(() => null);
+  return res.ok && d && !(d.errors && Object.keys(d.errors).length) ? d.response : null;
+}
+async function paperApif() {
+  if (!env('API_FOOTBALL_KEY')) return json({ ok: true, skipped: 'no_key' });
+  const now = Date.now();
+  const { data: items } = await db.from('bt_items').select('id,data,updated_at').in('kind', ['paper', 'claude']).eq('deleted', false).filter('data->>result', 'is', null);
+  const due = (items || []).filter((r: any) => {
+    const d = r.data, mins = (now - new Date(d.commence).getTime()) / 60e3;
+    return d.commence && /^soccer/.test(d.sport_key || '') && ['h2h', 'totals', 'dc', 'dnb', 'btts'].includes(d.market) && mins > 130 && mins < 36 * 60;
+  });
+  if (!due.length) return json({ ok: true, due: 0 });
+  const days = [...new Set(due.map((r: any) => String(r.data.commence).slice(0, 10)))].slice(0, 2);
+  let settled = 0;
+  for (const day of days) {
+    const list = await apif('/fixtures', { date: day });
+    if (!list) continue;
+    const rows = apifRows(list);
+    for (const r of due.filter((x: any) => String(x.data.commence).slice(0, 10) === day)) {
+      const d = r.data, m = findResult(rows, d.home, d.away, day);
+      const result = m ? settle(d.market, d.outcome, d.point, m) : null;
+      if (!result) continue;
+      const { error } = await db.from('bt_items').update({ data: { ...d, result, score: `${m[3]}-${m[4]}`, settledAt: now, settledBy: 'apif' },
+        updated_at: Math.max(Date.now(), r.updated_at + 1), server_ts: new Date().toISOString() }).eq('id', r.id).eq('updated_at', r.updated_at);
+      if (!error) settled++;
+    }
+  }
+  return json({ ok: true, due: due.length, days: days.length, settled });
+}
+
 async function weekly() {
   const { data } = await db.from('bt_items').select('kind,data').eq('deleted', false).in('kind', ['bet', 'paper', 'claude']);
   return json(await telegram(weeklyReport(data || [], new Date())));
@@ -89,10 +136,11 @@ async function weekly() {
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   let body: any; try { body = await req.json(); } catch { return json({ error: 'bad_request' }, 400); }
-  if (body.action === 'weekly' && body.cronKey) {
+  if ((body.action === 'weekly' || body.action === 'paper') && body.cronKey) {
     const { data: k } = await db.from('bt_state').select('data').eq('key', 'cron_key').maybeSingle();
     if (!k || body.cronKey !== k.data.key) return json({ error: 'bad_cron' }, 401);
-    return await weekly();
+    try { return body.action === 'paper' ? await paperApif() : await weekly(); }
+    catch (e) { console.error(e); return json({ error: 'server', message: String((e as Error).message || e) }, 500); }
   }
   const { data: ok, error: chk } = await db.rpc('bt_check', { p_secret: String(body.secret || '') });
   if (chk) return json({ error: /too_many/.test(chk.message) ? 'too_many_attempts' : 'check_failed' }, 429);
@@ -102,6 +150,7 @@ Deno.serve(async req => {
     if (body.action === 'cards') return await cards(String(body.pickId || ''));
     if (body.action === 'results') return await results(body.items);
     if (body.action === 'weekly') return await weekly();
+    if (body.action === 'digest') return await digest();
     return json({ error: 'unknown_action' }, 400);
   } catch (e) {
     console.error(e);
